@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import HighlightablePassage from './components/HighlightablePassage.vue'
 
 type Question = {
   number: number
@@ -7,6 +8,15 @@ type Question = {
   passage: string
   options: string[]
   graph?: boolean
+}
+
+type HighlightColor = 'yellow' | 'pink' | 'blue'
+
+type TextHighlight = {
+  id: string
+  start: number
+  end: number
+  color: HighlightColor
 }
 
 const questions: Record<number, Question> = {
@@ -41,7 +51,7 @@ const currentNumber = ref(10)
 const answers = reactive<Record<number, number | null>>({ 10: null, 11: null })
 const eliminated = reactive<Record<number, Set<number>>>({ 10: new Set(), 11: new Set() })
 const review = reactive(new Set<number>())
-const highlighted = ref(false)
+const highlights = reactive<Record<number, TextHighlight[]>>({ 10: [], 11: [] })
 const highlighterEnabled = ref(false)
 const navigatorOpen = ref(false)
 const directionsOpen = ref(false)
@@ -83,7 +93,6 @@ function toggleEliminated(index: number) {
 function goToQuestion(number: number) {
   currentNumber.value = Math.max(1, Math.min(27, number))
   navigatorOpen.value = false
-  highlighted.value = false
   void nextTick(() => {
     passageScroller.value?.scrollTo({ top: 0 })
     questionScroller.value?.scrollTo({ top: 0 })
@@ -107,8 +116,8 @@ function toggleHighlightMode() {
   moreOpen.value = false
 }
 
-function togglePassageHighlight() {
-  if (highlighterEnabled.value && currentNumber.value === 11) highlighted.value = !highlighted.value
+function updateHighlights(value: TextHighlight[]) {
+  highlights[currentNumber.value] = value
 }
 
 function showReportToast() {
@@ -133,11 +142,13 @@ function beginResize(event: PointerEvent) {
 }
 
 function onKeydown(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null
   if (['1', '2', '3', '4'].includes(event.key)) {
     event.preventDefault()
     selectAnswer(Number(event.key) - 1)
   }
   if (event.key === 'Enter') {
+    if (target?.closest('button, .user-highlight')) return
     event.preventDefault()
     nextQuestion()
   }
@@ -183,7 +194,14 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="header-tools">
-        <button class="tool-button" :class="{ active: highlighterEnabled }" type="button" @click="toggleHighlightMode">
+        <button
+          class="tool-button"
+          :class="{ active: highlighterEnabled }"
+          type="button"
+          :aria-pressed="highlighterEnabled"
+          :aria-label="highlighterEnabled ? 'Turn off highlight mode' : 'Turn on highlight mode'"
+          @click="toggleHighlightMode"
+        >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="m5 16 9.8-9.8a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8L8 19H5v-3Z" />
             <path d="M13.5 7.5 16.5 10.5M4 21h16" />
@@ -236,19 +254,15 @@ onBeforeUnmount(() => {
                 </g>
               </svg>
             </figure>
-            <p class="passage-copy graph-copy">{{ currentQuestion.passage }}</p>
           </template>
-
-          <p v-else class="passage-copy">
-            Historians long believed that large-scale metalworking was nearly impossible before 5,000 years ago because early communities lacked the furnaces and tools needed to safely reach and control extremely high temperatures. The oldest confirmed example of complex
-            <mark :class="{ highlighted }" @click="togglePassageHighlight">metal smelting</mark>
-            was a 4,500-year-old copper workshop discovered in the Balkans. Recently, however, archaeologists uncovered a remote cave site in the Caucasus Mountains containing a 12,000-year-old hearth lined with heat-resistant clay and traces of purified metal droplets. Chemical analysis indicates that the droplets were produced intentionally rather than by natural fire events. Thus, ______.
-          </p>
-          <div v-if="highlighterEnabled && currentNumber === 11 && !navigatorOpen" class="highlight-hint" :class="{ visible: highlighted }">
-            <span class="swatch yellow" /><span class="swatch pink" /><span class="swatch blue" />
-            <span class="hint-divider" />
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5h10M8 5V3h4v2m-6 2 1 10h6l1-10" /></svg>
-          </div>
+          <HighlightablePassage
+            :key="currentNumber"
+            :text="currentQuestion.passage"
+            :enabled="highlighterEnabled"
+            :model-value="highlights[currentNumber] ?? []"
+            :extra-class="currentNumber === 10 ? 'graph-copy' : ''"
+            @update:model-value="updateHighlights"
+          />
         </div>
       </article>
 

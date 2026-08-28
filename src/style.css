@@ -275,18 +275,6 @@ button:focus-visible,
   letter-spacing: -0.012em;
 }
 
-.passage-copy mark {
-  position: relative;
-  border-radius: 1px;
-  background: transparent;
-  color: inherit;
-  cursor: text;
-}
-
-.passage-copy mark.highlighted {
-  background: #fff34c;
-}
-
 .graph-copy {
   margin-top: 50px;
 }
@@ -378,43 +366,6 @@ button:focus-visible,
   fill: #222;
   font-size: 15px;
 }
-
-.highlight-hint {
-  position: absolute;
-  top: 88px;
-  right: 8px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 31px;
-  padding: 0 10px;
-  border: 1px solid #dedede;
-  border-radius: 7px;
-  background: #fff;
-  opacity: 0;
-  transform: translateY(-4px);
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.11);
-  pointer-events: none;
-  transition: opacity 0.14s ease, transform 0.14s ease;
-}
-
-.highlight-hint.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.highlight-hint .swatch {
-  width: 16px;
-  height: 16px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 50%;
-}
-
-.highlight-hint .yellow { background: #fff34c; }
-.highlight-hint .pink { background: #ff8ab3; }
-.highlight-hint .blue { background: #66bfff; }
-.highlight-hint .hint-divider { width: 1px; height: 18px; background: #dedede; }
-.highlight-hint svg { width: 16px; height: 16px; fill: none; stroke: #646464; stroke-width: 1.5; }
 
 .splitter {
   position: relative;
