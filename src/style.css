@@ -488,30 +488,6 @@ body.is-resizing * {
   stroke-width: 1.6;
 }
 
-.accessibility-button {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  margin: 0 4px 0 3px;
-  flex: 0 0 36px;
-  place-items: center;
-  border: 0;
-  border-radius: 10px;
-  background: #151515;
-  color: #fff;
-  cursor: pointer;
-}
-
-.accessibility-button svg {
-  width: 23px;
-  height: 23px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-}
-
 .question-shell h1 {
   margin: 15px 0 15px;
   font-family: Georgia, 'Times New Roman', serif;

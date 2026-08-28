@@ -282,9 +282,6 @@ onBeforeUnmount(() => {
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>
               Report
             </button>
-            <button class="accessibility-button" type="button" aria-label="Accessibility settings">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8h7a4 4 0 0 1 0 8H9m2-11L7 8l4 3m2 8 4-3-4-3" /></svg>
-            </button>
           </div>
 
           <h1>{{ currentQuestion.prompt }}</h1>
