@@ -1,0 +1,70 @@
+- main [ref=f6e3]:
+  - generic [ref=f6e4]:
+    - button "Directions" [ref=f6e6] [cursor=pointer]
+    - generic [ref=f6e9]:
+      - strong [ref=f6e10]: 27:56
+      - button "Hide" [ref=f6e11] [cursor=pointer]
+    - button [ref=f6e13] [cursor=pointer]
+  - generic [ref=f6e17]:
+    - article "Reading passage" [ref=f6e18]:
+      - generic [ref=f6e19]:
+        - figure "Coffee shop density and laptop usage graph" [ref=f6e20]:
+          - generic [ref=f6e21]: Coffee Shop Density andAverage Laptop Usage Time
+          - img "Coffee Shop Density and Average Laptop Usage Time" [ref=f6e22]:
+            - generic [ref=f6e27]:
+              - generic [ref=f6e28]: "0"
+              - generic [ref=f6e29]: "2"
+              - generic [ref=f6e30]: "4"
+              - generic [ref=f6e31]: "6"
+              - generic [ref=f6e32]: "8"
+              - generic [ref=f6e33]: "10"
+              - generic [ref=f6e34]: "12"
+              - generic [ref=f6e35]: "0"
+              - generic [ref=f6e36]: "10"
+              - generic [ref=f6e37]: "20"
+              - generic [ref=f6e38]: "30"
+              - generic [ref=f6e39]: Number of coffee shops within 1 kilometer
+              - generic [ref=f6e40]: Average daily laptop
+              - generic [ref=f6e41]: usage per person (hours)
+            - generic [ref=f6e52]:
+              - generic [ref=f6e55]: Winter
+              - generic [ref=f6e57]: Summer
+        - paragraph [ref=f6e58]: Researchers studying urban work habits hypothesized that the density of nearby coffee shops might predict how long people use their laptops each day. After measuring laptop usage across 60 sites in both summer and winter, the researchers noted that usage tended to increase as more coffee shops were located nearby. Examining the lines of best fit, the researchers concluded that this pattern was especially strong in summer, noting that ______.
+    - article "Answer choices" [ref=f6e59]:
+      - generic [ref=f6e60]:
+        - generic [ref=f6e61]:
+          - generic [ref=f6e62]: "10"
+          - button "Mark for Review" [ref=f6e63] [cursor=pointer]
+          - button "Report" [ref=f6e66] [cursor=pointer]
+          - button "Accessibility settings" [ref=f6e69] [cursor=pointer]
+        - heading "Which choice most effectively uses data from the graph to complete the statement?" [level=1] [ref=f6e72]
+        - radiogroup "Which choice most effectively uses data from the graph to complete the statement?" [ref=f6e73]:
+          - generic [ref=f6e74]:
+            - radio "A around five hours of laptop use were observed at a site with three coffee shops within one kilometer, while around eleven hours were observed at a site with six coffee shops within one kilometer." [ref=f6e75] [cursor=pointer]:
+              - generic [ref=f6e76]: A
+              - generic [ref=f6e77]: around five hours of laptop use were observed at a site with three coffee shops within one kilometer, while around eleven hours were observed at a site with six coffee shops within one kilometer.
+            - button "Cross out answer A" [ref=f6e78] [cursor=pointer]:
+              - generic [ref=f6e79]: A
+          - generic [ref=f6e80]:
+            - radio "B around three hours of laptop use were observed at a site with ten coffee shops within one kilometer, while around six hours were observed at a site with thirty coffee shops within one kilometer." [ref=f6e81] [cursor=pointer]:
+              - generic [ref=f6e82]: B
+              - generic [ref=f6e83]: around three hours of laptop use were observed at a site with ten coffee shops within one kilometer, while around six hours were observed at a site with thirty coffee shops within one kilometer.
+            - button "Cross out answer B" [ref=f6e84] [cursor=pointer]:
+              - generic [ref=f6e85]: B
+          - generic [ref=f6e86]:
+            - radio "C fewer than five hours of laptop use were observed at a site with ten coffee shops within one kilometer, while more than ten hours were observed at a site with thirty coffee shops within one kilometer." [ref=f6e87] [cursor=pointer]:
+              - generic [ref=f6e88]: C
+              - generic [ref=f6e89]: fewer than five hours of laptop use were observed at a site with ten coffee shops within one kilometer, while more than ten hours were observed at a site with thirty coffee shops within one kilometer.
+            - button "Cross out answer C" [ref=f6e90] [cursor=pointer]:
+              - generic [ref=f6e91]: C
+          - generic [ref=f6e92]:
+            - radio "D fewer than ten hours of laptop use were observed at a site with five coffee shops within one kilometer, while more than thirty hours were observed at a site with ten coffee shops within one kilometer." [ref=f6e93] [cursor=pointer]:
+              - generic [ref=f6e94]: D
+              - generic [ref=f6e95]: fewer than ten hours of laptop use were observed at a site with five coffee shops within one kilometer, while more than thirty hours were observed at a site with ten coffee shops within one kilometer.
+            - button "Cross out answer D" [ref=f6e96] [cursor=pointer]:
+              - generic [ref=f6e97]: D
+  - generic [ref=f6e98]:
+    - button "10 of 27" [ref=f6e99] [cursor=pointer]
+    - generic [ref=f6e102]:
+      - button "Previous" [ref=f6e103] [cursor=pointer]
+      - button "Next" [ref=f6e104] [cursor=pointer]

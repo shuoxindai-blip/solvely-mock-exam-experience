@@ -1,0 +1,63 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - button "Directions" [ref=e6] [cursor=pointer]
+    - generic [ref=e9]:
+      - strong [ref=e10]: 26:48
+      - button "Hide" [ref=e11] [cursor=pointer]
+    - generic [ref=e12]:
+      - button "Highlight" [ref=e13] [cursor=pointer]
+      - button "More" [ref=e19] [cursor=pointer]
+  - generic [ref=e25]:
+    - article "Reading passage" [ref=e26]:
+      - paragraph [ref=e122]:
+        - text: Historians long believed that large-scale metalworking was nearly impossible before 5,000 years ago because early communities lacked the furnaces and tools needed to safely reach and control extremely high temperatures. The oldest confirmed example of complex
+        - mark [ref=e123]: metal smelting
+        - text: was a 4,500-year-old copper workshop discovered in the Balkans. Recently, however, archaeologists uncovered a remote cave site in the Caucasus Mountains containing a 12,000-year-old hearth lined with heat-resistant clay and traces of purified metal droplets. Chemical analysis indicates that the droplets were produced intentionally rather than by natural fire events. Thus, ______.
+    - separator [ref=e65]
+    - article "Answer choices" [ref=e70]:
+      - generic [ref=e71]:
+        - generic [ref=e72]:
+          - generic [ref=e73]: "11"
+          - button "Mark for Review" [ref=e74] [cursor=pointer]
+          - button "Report" [ref=e77] [cursor=pointer]
+          - button "Accessibility settings" [ref=e80] [cursor=pointer]
+        - heading "Which choice most logically completes the text?" [level=1] [ref=e124]
+        - radiogroup "Which choice most logically completes the text?" [ref=e125]:
+          - generic [ref=e126]:
+            - radio "A early metalworkers must have possessed written instructions that guided their smelting practices." [ref=e127] [cursor=pointer]:
+              - generic [ref=e128]: A
+              - generic [ref=e129]: early metalworkers must have possessed written instructions that guided their smelting practices.
+            - button "Cross out answer A" [ref=e130] [cursor=pointer]:
+              - generic [ref=e131]: A
+          - generic [ref=e132]:
+            - radio "B working with purified metal would have required protective equipment that early humans likely did not have." [ref=e133] [cursor=pointer]:
+              - generic [ref=e134]: B
+              - generic [ref=e135]: working with purified metal would have required protective equipment that early humans likely did not have.
+            - button "Cross out answer B" [ref=e136] [cursor=pointer]:
+              - generic [ref=e137]: B
+          - generic [ref=e138]:
+            - radio "C there is no compelling evidence that complex metalworking was rare before 5,000 years ago." [ref=e139] [cursor=pointer]:
+              - generic [ref=e140]: C
+              - generic [ref=e141]: there is no compelling evidence that complex metalworking was rare before 5,000 years ago.
+            - button "Cross out answer C" [ref=e142] [cursor=pointer]:
+              - generic [ref=e143]: C
+          - generic [ref=e144]:
+            - radio "D early human groups may have developed more sophisticated heat-control methods than scholars previously assumed." [ref=e145] [cursor=pointer]:
+              - generic [ref=e146]: D
+              - generic [ref=e147]: early human groups may have developed more sophisticated heat-control methods than scholars previously assumed.
+            - button "Cross out answer D" [ref=e148] [cursor=pointer]:
+              - generic [ref=e149]: D
+        - paragraph [ref=e109]:
+          - text: "Tip: press"
+          - generic [ref=e110]: "1"
+          - generic [ref=e111]: "2"
+          - generic [ref=e112]: "3"
+          - generic [ref=e113]: "4"
+          - text: to pick an answer, then
+          - generic [ref=e114]: Enter
+          - text: to go to the next question
+  - generic [ref=e115]:
+    - button "11 of 27" [ref=e150] [cursor=pointer]
+    - generic [ref=e119]:
+      - button "Previous" [ref=e120] [cursor=pointer]
+      - button "Next" [active] [ref=e121] [cursor=pointer]
