@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import GeoGebraCalculator from './components/GeoGebraCalculator.vue'
 import HighlightablePassage from './components/HighlightablePassage.vue'
+import MathReferenceSheet from './components/MathReferenceSheet.vue'
 
-type Question = {
-  number: number
-  prompt: string
-  passage: string
-  options: string[]
-  graph?: boolean
-}
-
+type SectionKind = 'reading' | 'math'
+type ExamStage = 'exam' | 'review' | 'break' | 'complete'
 type HighlightColor = 'yellow' | 'pink' | 'blue'
 
 type TextHighlight = {
@@ -19,80 +15,135 @@ type TextHighlight = {
   color: HighlightColor
 }
 
-const questions: Record<number, Question> = {
-  10: {
-    number: 10,
-    graph: true,
-    prompt: 'Which choice most effectively uses data from the graph to complete the statement?',
-    passage:
-      'Researchers studying urban work habits hypothesized that the density of nearby coffee shops might predict how long people use their laptops each day. After measuring laptop usage across 60 sites in both summer and winter, the researchers noted that usage tended to increase as more coffee shops were located nearby. Examining the lines of best fit, the researchers concluded that this pattern was especially strong in summer, noting that ______.',
-    options: [
-      'around five hours of laptop use were observed at a site with three coffee shops within one kilometer, while around eleven hours were observed at a site with six coffee shops within one kilometer.',
-      'around three hours of laptop use were observed at a site with ten coffee shops within one kilometer, while around six hours were observed at a site with thirty coffee shops within one kilometer.',
-      'fewer than five hours of laptop use were observed at a site with ten coffee shops within one kilometer, while more than ten hours were observed at a site with thirty coffee shops within one kilometer.',
-      'fewer than ten hours of laptop use were observed at a site with five coffee shops within one kilometer, while more than thirty hours were observed at a site with ten coffee shops within one kilometer.',
-    ],
-  },
-  11: {
-    number: 11,
-    prompt: 'Which choice most logically completes the text?',
-    passage:
-      'Historians long believed that large-scale metalworking was nearly impossible before 5,000 years ago because early communities lacked the furnaces and tools needed to safely reach and control extremely high temperatures. The oldest confirmed example of complex metal smelting was a 4,500-year-old copper workshop discovered in the Balkans. Recently, however, archaeologists uncovered a remote cave site in the Caucasus Mountains containing a 12,000-year-old hearth lined with heat-resistant clay and traces of purified metal droplets. Chemical analysis indicates that the droplets were produced intentionally rather than by natural fire events. Thus, ______.',
-    options: [
-      'early metalworkers must have possessed written instructions that guided their smelting practices.',
-      'working with purified metal would have required protective equipment that early humans likely did not have.',
-      'there is no compelling evidence that complex metalworking was rare before 5,000 years ago.',
-      'early human groups may have developed more sophisticated heat-control methods than scholars previously assumed.',
-    ],
-  },
+type ModuleDefinition = {
+  id: string
+  sectionNumber: number
+  moduleNumber: number
+  section: SectionKind
+  title: string
+  total: number
+  duration: number
 }
 
+type Question = {
+  prompt: string
+  passage: string
+  options: string[]
+  graph?: boolean
+  diagram?: boolean
+}
+
+const modules: ModuleDefinition[] = [
+  { id: 'reading-1', sectionNumber: 1, moduleNumber: 1, section: 'reading', title: 'Reading and Writing', total: 27, duration: 32 * 60 },
+  { id: 'reading-2', sectionNumber: 1, moduleNumber: 2, section: 'reading', title: 'Reading and Writing', total: 27, duration: 32 * 60 },
+  { id: 'math-1', sectionNumber: 2, moduleNumber: 1, section: 'math', title: 'Math', total: 22, duration: 32 * 60 },
+  { id: 'math-2', sectionNumber: 2, moduleNumber: 2, section: 'math', title: 'Math', total: 22, duration: 32 * 60 },
+]
+
+const readingGraphQuestion: Question = {
+  graph: true,
+  prompt: 'Which choice most effectively uses data from the graph to complete the statement?',
+  passage:
+    'Researchers studying urban work habits hypothesized that the density of nearby coffee shops might predict how long people use their laptops each day. After measuring laptop usage across 60 sites in both summer and winter, the researchers noted that usage tended to increase as more coffee shops were located nearby. Examining the lines of best fit, the researchers concluded that this pattern was especially strong in summer, noting that ______.',
+  options: [
+    'around five hours of laptop use were observed at a site with three coffee shops within one kilometer, while around eleven hours were observed at a site with six coffee shops within one kilometer.',
+    'around three hours of laptop use were observed at a site with ten coffee shops within one kilometer, while around six hours were observed at a site with thirty coffee shops within one kilometer.',
+    'fewer than five hours of laptop use were observed at a site with ten coffee shops within one kilometer, while more than ten hours were observed at a site with thirty coffee shops within one kilometer.',
+    'fewer than ten hours of laptop use were observed at a site with five coffee shops within one kilometer, while more than thirty hours were observed at a site with ten coffee shops within one kilometer.',
+  ],
+}
+
+const readingPassageQuestion: Question = {
+  prompt: 'Which choice most logically completes the text?',
+  passage:
+    'Historians long believed that large-scale metalworking was nearly impossible before 5,000 years ago because early communities lacked the furnaces and tools needed to safely reach and control extremely high temperatures. The oldest confirmed example of complex metal smelting was a 4,500-year-old copper workshop discovered in the Balkans. Recently, however, archaeologists uncovered a remote cave site in the Caucasus Mountains containing a 12,000-year-old hearth lined with heat-resistant clay and traces of purified metal droplets. Chemical analysis indicates that the droplets were produced intentionally rather than by natural fire events. Thus, ______.',
+  options: [
+    'early metalworkers must have possessed written instructions that guided their smelting practices.',
+    'working with purified metal would have required protective equipment that early humans likely did not have.',
+    'there is no compelling evidence that complex metalworking was rare before 5,000 years ago.',
+    'early human groups may have developed more sophisticated heat-control methods than scholars previously assumed.',
+  ],
+}
+
+const mathDiagramQuestion: Question = {
+  diagram: true,
+  passage:
+    'Points P, Q, R, and S lie on the circle shown. O is the center of the circle. Arc PR has length 90π and arc PS has length 45π.',
+  prompt: 'What is the length of arc QR?',
+  options: ['15π', '30π', '45π', '60π'],
+}
+
+const mathAlgebraQuestion: Question = {
+  passage:
+    'A rectangular garden has a length of (x + 2) meters and a width of (x − 10) meters. The area of the garden is 133 square meters.',
+  prompt: 'What is the value of x?',
+  options: ['9', '11', '13', '17'],
+}
+
+const stage = ref<ExamStage>('exam')
+const moduleIndex = ref(0)
 const currentNumber = ref(10)
-const answers = reactive<Record<number, number | null>>({ 10: null, 11: null })
-const eliminated = reactive<Record<number, Set<number>>>({ 10: new Set(), 11: new Set() })
-const review = reactive(new Set<number>())
-const highlights = reactive<Record<number, TextHighlight[]>>({ 10: [], 11: [] })
+const answers = reactive<Record<string, number | null>>({})
+const eliminated = reactive<Record<string, Set<number>>>({})
+const review = reactive(new Set<string>())
+const highlights = reactive<Record<string, TextHighlight[]>>({})
 const highlighterEnabled = ref(false)
+const calculatorOpen = ref(false)
+const referenceOpen = ref(false)
 const navigatorOpen = ref(false)
 const directionsOpen = ref(false)
 const moreOpen = ref(false)
 const timerVisible = ref(true)
-const reportToast = ref(false)
-const timeRemaining = ref(27 * 60 + 56)
+const toastMessage = ref('')
+const timeRemaining = ref(modules[0].duration)
+const breakRemaining = ref(9 * 60 + 52)
 const leftWidth = ref(47.25)
 const passageScroller = ref<HTMLElement | null>(null)
 const questionScroller = ref<HTMLElement | null>(null)
 let countdownId: number | undefined
 let toastId: number | undefined
 
-const currentQuestion = computed(() => questions[currentNumber.value] ?? questions[11])
-const timeLabel = computed(() => {
-  const minutes = Math.floor(timeRemaining.value / 60)
-  const seconds = timeRemaining.value % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
+const currentModule = computed(() => modules[moduleIndex.value])
+const currentQuestion = computed<Question>(() => {
+  if (currentModule.value.section === 'math') return currentNumber.value % 2 === 1 ? mathDiagramQuestion : mathAlgebraQuestion
+  return currentNumber.value % 2 === 0 ? readingGraphQuestion : readingPassageQuestion
+})
+const questionKey = computed(() => `${currentModule.value.id}-${currentNumber.value}`)
+const sectionLabel = computed(() => `Section ${currentModule.value.sectionNumber}, Module ${currentModule.value.moduleNumber}`)
+const timeLabel = computed(() => formatTime(timeRemaining.value))
+const breakTimeLabel = computed(() => formatTime(breakRemaining.value))
+const answeredNumbers = computed(() => {
+  const values = new Set<number>()
+  for (let number = 1; number <= currentModule.value.total; number += 1) {
+    if (answers[`${currentModule.value.id}-${number}`] !== undefined && answers[`${currentModule.value.id}-${number}`] !== null) values.add(number)
+  }
+  return values
 })
 
-const answeredNumbers = computed(() => {
-  const numbers = new Set([1, 2, 5])
-  Object.entries(answers).forEach(([number, answer]) => {
-    if (answer !== null) numbers.add(Number(number))
-  })
-  return numbers
-})
+function formatTime(value: number) {
+  const minutes = Math.floor(value / 60)
+  const seconds = value % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function keyFor(number: number) {
+  return `${currentModule.value.id}-${number}`
+}
 
 function selectAnswer(index: number) {
-  answers[currentNumber.value] = index
+  answers[questionKey.value] = index
 }
 
 function toggleEliminated(index: number) {
-  const active = eliminated[currentNumber.value] ?? new Set<number>()
-  if (!eliminated[currentNumber.value]) eliminated[currentNumber.value] = active
+  const active = eliminated[questionKey.value] ?? new Set<number>()
+  if (!eliminated[questionKey.value]) eliminated[questionKey.value] = active
   active.has(index) ? active.delete(index) : active.add(index)
 }
 
 function goToQuestion(number: number) {
-  currentNumber.value = Math.max(1, Math.min(27, number))
+  currentNumber.value = Math.max(1, Math.min(currentModule.value.total, number))
   navigatorOpen.value = false
+  closeTransientTools()
   void nextTick(() => {
     passageScroller.value?.scrollTo({ top: 0 })
     questionScroller.value?.scrollTo({ top: 0 })
@@ -100,15 +151,66 @@ function goToQuestion(number: number) {
 }
 
 function nextQuestion() {
-  if (currentNumber.value < 27) goToQuestion(currentNumber.value + 1)
+  if (stage.value !== 'exam') return
+  if (currentNumber.value < currentModule.value.total) goToQuestion(currentNumber.value + 1)
+  else openReview()
 }
 
 function previousQuestion() {
+  if (stage.value === 'review') {
+    stage.value = 'exam'
+    return
+  }
   if (currentNumber.value > 1) goToQuestion(currentNumber.value - 1)
 }
 
+function openReview() {
+  stage.value = 'review'
+  navigatorOpen.value = false
+  calculatorOpen.value = false
+  referenceOpen.value = false
+  highlighterEnabled.value = false
+}
+
+function startModule(index: number) {
+  moduleIndex.value = index
+  currentNumber.value = 1
+  timeRemaining.value = modules[index].duration
+  stage.value = 'exam'
+  navigatorOpen.value = false
+  timerVisible.value = true
+  closeTransientTools()
+}
+
+function advanceFromReview() {
+  if (moduleIndex.value === 1) {
+    stage.value = 'break'
+    navigatorOpen.value = false
+    return
+  }
+  if (moduleIndex.value < modules.length - 1) startModule(moduleIndex.value + 1)
+  else stage.value = 'complete'
+}
+
+function resumeAfterBreak() {
+  startModule(2)
+}
+
+function restartExam() {
+  Object.keys(answers).forEach((key) => delete answers[key])
+  Object.keys(eliminated).forEach((key) => delete eliminated[key])
+  Object.keys(highlights).forEach((key) => delete highlights[key])
+  review.clear()
+  moduleIndex.value = 0
+  currentNumber.value = 10
+  timeRemaining.value = modules[0].duration
+  breakRemaining.value = 9 * 60 + 52
+  stage.value = 'exam'
+  closeTransientTools()
+}
+
 function toggleReview() {
-  review.has(currentNumber.value) ? review.delete(currentNumber.value) : review.add(currentNumber.value)
+  review.has(questionKey.value) ? review.delete(questionKey.value) : review.add(questionKey.value)
 }
 
 function toggleHighlightMode() {
@@ -116,14 +218,32 @@ function toggleHighlightMode() {
   moreOpen.value = false
 }
 
-function updateHighlights(value: TextHighlight[]) {
-  highlights[currentNumber.value] = value
+function toggleCalculator() {
+  calculatorOpen.value = !calculatorOpen.value
+  moreOpen.value = false
 }
 
-function showReportToast() {
-  reportToast.value = true
+function toggleReference() {
+  referenceOpen.value = !referenceOpen.value
+  moreOpen.value = false
+}
+
+function closeTransientTools() {
+  calculatorOpen.value = false
+  referenceOpen.value = false
+  highlighterEnabled.value = false
+  directionsOpen.value = false
+  moreOpen.value = false
+}
+
+function updateHighlights(value: TextHighlight[]) {
+  highlights[questionKey.value] = value
+}
+
+function showToast(message: string) {
+  toastMessage.value = message
   if (toastId) window.clearTimeout(toastId)
-  toastId = window.setTimeout(() => (reportToast.value = false), 2400)
+  toastId = window.setTimeout(() => (toastMessage.value = ''), 2400)
 }
 
 function beginResize(event: PointerEvent) {
@@ -138,30 +258,33 @@ function beginResize(event: PointerEvent) {
   document.body.classList.add('is-resizing')
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
-  event.currentTarget && (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+  ;(event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
 }
 
 function onKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
+  if (event.key === 'Escape') {
+    navigatorOpen.value = false
+    directionsOpen.value = false
+    moreOpen.value = false
+    referenceOpen.value = false
+    return
+  }
+  if (stage.value !== 'exam' || target?.closest('button, input, select, textarea, [contenteditable], .user-highlight')) return
   if (['1', '2', '3', '4'].includes(event.key)) {
     event.preventDefault()
     selectAnswer(Number(event.key) - 1)
   }
   if (event.key === 'Enter') {
-    if (target?.closest('button, .user-highlight')) return
     event.preventDefault()
     nextQuestion()
-  }
-  if (event.key === 'Escape') {
-    navigatorOpen.value = false
-    directionsOpen.value = false
-    moreOpen.value = false
   }
 }
 
 onMounted(() => {
   countdownId = window.setInterval(() => {
-    if (timeRemaining.value > 0) timeRemaining.value -= 1
+    if ((stage.value === 'exam' || stage.value === 'review') && timeRemaining.value > 0) timeRemaining.value -= 1
+    if (stage.value === 'break' && breakRemaining.value > 0) breakRemaining.value -= 1
   }, 1000)
   window.addEventListener('keydown', onKeydown)
 })
@@ -174,181 +297,92 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="exam-app" :style="{ '--split': `${leftWidth}%` }">
+  <main v-if="stage === 'break'" class="break-screen">
+    <button class="save-leave-button" type="button" @click="showToast('Your practice test progress is saved in this demo.')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10" /></svg>Save and Leave</button>
+    <div class="break-layout">
+      <section class="break-timer-column">
+        <div class="oneprep-wordmark"><span aria-hidden="true">●</span>OnePrep</div>
+        <div class="break-timer-card"><span>Break Time:</span><strong>{{ breakTimeLabel }}</strong></div>
+        <button class="resume-button" type="button" @click="resumeAfterBreak">Resume Testing</button>
+      </section>
+      <section class="break-copy">
+        <h1>Practice Test Break</h1>
+        <p>You can resume this practice test as soon as you're ready to move on. On test day, you'll wait until the clock counts down.</p>
+        <h2>On Test Day…</h2>
+        <p>After the break, a “Resume Testing” button will appear and you'll start the next section.</p>
+        <ul><li>Do not disturb students who are still testing.</li><li>Do not exit the app or close your laptop.</li><li>Do not access phones, smartwatches, textbooks, notes, or the internet.</li><li>Do not eat or drink near any testing device.</li><li>Do not speak in the testing room; outside the room, do not discuss the exam with anyone.</li></ul>
+      </section>
+    </div>
+    <div v-if="toastMessage" class="toast break-toast" role="status">{{ toastMessage }}</div>
+  </main>
+
+  <main v-else class="exam-app" :class="{ 'review-stage': stage === 'review', 'complete-stage': stage === 'complete' }" :style="{ '--split': `${leftWidth}%` }">
     <header class="exam-header">
       <div class="header-left">
-        <button class="directions-button" type="button" :aria-expanded="directionsOpen" @click="directionsOpen = !directionsOpen">
-          Directions
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
-        </button>
-        <div v-if="directionsOpen" class="header-popover directions-popover">
-          <strong>Reading and Writing</strong>
-          <p>Choose the best answer to each question. You can return to any question before time expires.</p>
-        </div>
+        <button class="directions-button" type="button" :aria-expanded="directionsOpen" @click="directionsOpen = !directionsOpen">Directions<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg></button>
+        <div v-if="directionsOpen" class="header-popover directions-popover"><strong>{{ currentModule.title }}</strong><p v-if="currentModule.section === 'reading'">Choose the best answer to each question. You can return to any question before the module ends.</p><p v-else>Solve each problem and choose the best answer. Calculator and reference tools are available for this section.</p></div>
       </div>
-
-      <div class="timer-wrap">
-        <strong v-if="timerVisible" class="timer" aria-live="polite">{{ timeLabel }}</strong>
-        <span v-else class="timer-placeholder">Timer hidden</span>
-        <button type="button" @click="timerVisible = !timerVisible">{{ timerVisible ? 'Hide' : 'Show' }}</button>
-      </div>
-
+      <div class="timer-wrap"><strong v-if="timerVisible" class="timer" aria-live="polite">{{ timeLabel }}</strong><span v-else class="timer-placeholder">Timer hidden</span><button type="button" @click="timerVisible = !timerVisible">{{ timerVisible ? 'Hide' : 'Show' }}</button></div>
       <div class="header-tools">
-        <button
-          class="tool-button"
-          :class="{ active: highlighterEnabled }"
-          type="button"
-          :aria-pressed="highlighterEnabled"
-          :aria-label="highlighterEnabled ? 'Turn off highlight mode' : 'Turn on highlight mode'"
-          @click="toggleHighlightMode"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m5 16 9.8-9.8a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8L8 19H5v-3Z" />
-            <path d="M13.5 7.5 16.5 10.5M4 21h16" />
-          </svg>
-          <span>Highlight</span>
-        </button>
-        <div class="more-wrap">
-          <button class="tool-button" type="button" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.3" fill="currentColor" /><circle cx="12" cy="12" r="1.3" fill="currentColor" /><circle cx="12" cy="19" r="1.3" fill="currentColor" /></svg>
-            <span>More</span>
-          </button>
-          <div v-if="moreOpen" class="header-popover more-popover">
-            <button type="button">Line reader</button>
-            <button type="button">Question text size</button>
-            <button type="button">Keyboard shortcuts</button>
-          </div>
-        </div>
+        <button class="tool-button" :class="{ active: highlighterEnabled }" type="button" :aria-pressed="highlighterEnabled" :aria-label="highlighterEnabled ? 'Turn off highlight mode' : 'Turn on highlight mode'" @click="toggleHighlightMode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16 9.8-9.8a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8L8 19H5v-3Z" /><path d="M13.5 7.5 16.5 10.5M4 21h16" /></svg><span>Highlight</span></button>
+        <button v-if="currentModule.section === 'math'" class="tool-button" :class="{ active: calculatorOpen }" type="button" :aria-pressed="calculatorOpen" @click="toggleCalculator"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="2" /><path d="M8.5 6h7v3h-7zM9 13h.01M12 13h.01M15 13h.01M9 17h.01M12 17h.01M15 17h.01" /></svg><span>Calculator</span></button>
+        <button v-if="currentModule.section === 'math'" class="tool-button" :class="{ active: referenceOpen }" type="button" :aria-pressed="referenceOpen" @click="toggleReference"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l3 3v15H7zM15 3v4h4M10 11h5M10 15h5" /></svg><span>Reference</span></button>
+        <div class="more-wrap"><button class="tool-button" type="button" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.3" fill="currentColor" /><circle cx="12" cy="12" r="1.3" fill="currentColor" /><circle cx="12" cy="19" r="1.3" fill="currentColor" /></svg><span>More</span></button><div v-if="moreOpen" class="header-popover more-popover"><button type="button">Line reader</button><button type="button">Question text size</button><button type="button">Keyboard shortcuts</button></div></div>
       </div>
     </header>
 
-    <section class="exam-workspace">
-      <article ref="passageScroller" class="passage-panel" aria-label="Reading passage">
-        <div class="passage-inner" :class="{ 'graph-question': currentNumber === 10 }">
-          <template v-if="currentNumber === 10">
-            <figure class="graph-figure" aria-label="Coffee shop density and laptop usage graph">
+    <template v-if="stage === 'exam' && currentModule.section === 'reading'">
+      <section class="exam-workspace">
+        <article ref="passageScroller" class="passage-panel" aria-label="Reading passage">
+          <div class="passage-inner" :class="{ 'graph-question': currentQuestion.graph }">
+            <figure v-if="currentQuestion.graph" class="graph-figure" aria-label="Coffee shop density and laptop usage graph">
               <figcaption>Coffee Shop Density and<br />Average Laptop Usage Time</figcaption>
               <svg class="graph" viewBox="0 0 500 420" role="img" aria-labelledby="graph-title">
                 <title id="graph-title">Coffee Shop Density and Average Laptop Usage Time</title>
-                <g class="plot-area">
-                <g class="grid-lines">
-                  <path d="M95 30H430M95 73.3H430M95 116.7H430M95 160H430M95 203.3H430M95 246.7H430M95 290H430" />
-                </g>
-                <path class="axis" d="M95 21V290H440M89 290H101M89 246.7H101M89 203.3H101M89 160H101M89 116.7H101M89 73.3H101M89 30H101" />
-                <g class="axis-labels">
-                  <text x="83" y="296">0</text><text x="74" y="252">2</text><text x="74" y="209">4</text><text x="74" y="166">6</text><text x="74" y="123">8</text><text x="65" y="80">10</text><text x="65" y="36">12</text>
-                  <text x="91" y="315">0</text><text x="199" y="315">10</text><text x="309" y="315">20</text><text x="420" y="315">30</text>
-                  <text class="x-title" x="264" y="346" text-anchor="middle">Number of coffee shops within 1 kilometer</text>
-                  <text class="y-title" x="23" y="160" text-anchor="middle" transform="rotate(-90 23 160)">Average daily laptop</text>
-                  <text class="y-title" x="42" y="160" text-anchor="middle" transform="rotate(-90 42 160)">usage per person (hours)</text>
-                </g>
-                <polyline class="winter-line" points="95,225 205,214 315,182 425,160" />
-                <rect class="winter-dot" x="90" y="220" width="10" height="10" /><rect class="winter-dot" x="200" y="209" width="10" height="10" /><rect class="winter-dot" x="310" y="177" width="10" height="10" /><rect class="winter-dot" x="420" y="155" width="10" height="10" />
-                <polyline class="summer-line" points="95,247 205,203 315,138 425,52" />
-                <path class="summer-dot" d="m95 240 7 7-7 7-7-7Z" /><path class="summer-dot" d="m205 196 7 7-7 7-7-7Z" /><path class="summer-dot" d="m315 131 7 7-7 7-7-7Z" /><path class="summer-dot" d="m425 45 7 7-7 7-7-7Z" />
-                </g>
-                <g class="legend">
-                  <rect x="25" y="367" width="310" height="36" />
-                  <path class="winter-line" d="M46 385h50" /><rect class="winter-dot" x="66" y="380" width="10" height="10" /><text x="108" y="391">Winter</text>
-                  <path class="summer-line" d="M183 385h50" /><path class="summer-dot" d="m208 378 7 7-7 7-7-7Z" /><text x="246" y="391">Summer</text>
-                </g>
+                <g class="plot-area"><g class="grid-lines"><path d="M95 30H430M95 73.3H430M95 116.7H430M95 160H430M95 203.3H430M95 246.7H430M95 290H430" /></g><path class="axis" d="M95 21V290H440M89 290H101M89 246.7H101M89 203.3H101M89 160H101M89 116.7H101M89 73.3H101M89 30H101" /><g class="axis-labels"><text x="83" y="296">0</text><text x="74" y="252">2</text><text x="74" y="209">4</text><text x="74" y="166">6</text><text x="74" y="123">8</text><text x="65" y="80">10</text><text x="65" y="36">12</text><text x="91" y="315">0</text><text x="199" y="315">10</text><text x="309" y="315">20</text><text x="420" y="315">30</text><text class="x-title" x="264" y="346" text-anchor="middle">Number of coffee shops within 1 kilometer</text><text class="y-title" x="23" y="160" text-anchor="middle" transform="rotate(-90 23 160)">Average daily laptop</text><text class="y-title" x="42" y="160" text-anchor="middle" transform="rotate(-90 42 160)">usage per person (hours)</text></g><polyline class="winter-line" points="95,225 205,214 315,182 425,160" /><rect class="winter-dot" x="90" y="220" width="10" height="10" /><rect class="winter-dot" x="200" y="209" width="10" height="10" /><rect class="winter-dot" x="310" y="177" width="10" height="10" /><rect class="winter-dot" x="420" y="155" width="10" height="10" /><polyline class="summer-line" points="95,247 205,203 315,138 425,52" /><path class="summer-dot" d="m95 240 7 7-7 7-7-7Z" /><path class="summer-dot" d="m205 196 7 7-7 7-7-7Z" /><path class="summer-dot" d="m315 131 7 7-7 7-7-7Z" /><path class="summer-dot" d="m425 45 7 7-7 7-7-7Z" /></g>
+                <g class="legend"><rect x="25" y="367" width="310" height="36" /><path class="winter-line" d="M46 385h50" /><rect class="winter-dot" x="66" y="380" width="10" height="10" /><text x="108" y="391">Winter</text><path class="summer-line" d="M183 385h50" /><path class="summer-dot" d="m208 378 7 7-7 7-7-7Z" /><text x="246" y="391">Summer</text></g>
               </svg>
             </figure>
-          </template>
-          <HighlightablePassage
-            :key="currentNumber"
-            :text="currentQuestion.passage"
-            :enabled="highlighterEnabled"
-            :model-value="highlights[currentNumber] ?? []"
-            :extra-class="currentNumber === 10 ? 'graph-copy' : ''"
-            @update:model-value="updateHighlights"
-          />
-        </div>
-      </article>
-
-      <div class="splitter" role="separator" aria-orientation="vertical" :aria-valuenow="Math.round(leftWidth)" tabindex="0" @pointerdown="beginResize">
-        <span><i /><i /><i /></span>
-      </div>
-
-      <article ref="questionScroller" class="question-panel" aria-label="Answer choices">
-        <div class="question-shell">
-          <div class="question-toolbar">
-            <span class="number-badge">{{ currentNumber }}</span>
-            <button class="review-button" :class="{ active: review.has(currentNumber) }" type="button" @click="toggleReview">
-              <svg viewBox="0 0 18 22" aria-hidden="true"><path d="M3 2.5h12v17l-6-4-6 4v-17Z" /></svg>
-              Mark for Review
-            </button>
-            <button class="report-button" type="button" @click="showReportToast">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>
-              Report
-            </button>
+            <HighlightablePassage :key="questionKey" :text="currentQuestion.passage" :enabled="highlighterEnabled" :model-value="highlights[questionKey] ?? []" :extra-class="currentQuestion.graph ? 'graph-copy' : ''" @update:model-value="updateHighlights" />
           </div>
-
+        </article>
+        <div class="splitter" role="separator" aria-orientation="vertical" :aria-valuenow="Math.round(leftWidth)" tabindex="0" @pointerdown="beginResize"><span><i /><i /><i /></span></div>
+        <article ref="questionScroller" class="question-panel" aria-label="Answer choices"><div class="question-shell">
+          <div class="question-toolbar"><span class="number-badge">{{ currentNumber }}</span><button class="review-button" :class="{ active: review.has(questionKey) }" type="button" @click="toggleReview"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M3 2.5h12v17l-6-4-6 4v-17Z" /></svg>Mark for Review</button><button class="report-button" type="button" @click="showToast('Thanks. This question has been reported for review.')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>Report</button></div>
           <h1>{{ currentQuestion.prompt }}</h1>
+          <div class="choices" role="radiogroup" :aria-label="currentQuestion.prompt"><div v-for="(option, index) in currentQuestion.options" :key="`${questionKey}-${index}`" class="choice-row" :class="{ selected: answers[questionKey] === index, eliminated: eliminated[questionKey]?.has(index) }"><button class="choice-card" type="button" role="radio" :aria-checked="answers[questionKey] === index" @click="selectAnswer(index)"><span class="choice-letter">{{ String.fromCharCode(65 + index) }}</span><span class="choice-copy">{{ option }}</span></button><button class="eliminate-button" type="button" :aria-label="`Cross out answer ${String.fromCharCode(65 + index)}`" @click="toggleEliminated(index)"><span>{{ String.fromCharCode(65 + index) }}</span></button></div></div>
+          <p class="keyboard-tip">Tip:&nbsp; press <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> to pick an answer, then <kbd class="enter-key">Enter</kbd> to go to the next question</p>
+        </div></article>
+      </section>
+    </template>
 
-          <div class="choices" role="radiogroup" :aria-label="currentQuestion.prompt">
-            <div
-              v-for="(option, index) in currentQuestion.options"
-              :key="`${currentNumber}-${index}`"
-              class="choice-row"
-              :class="{ selected: answers[currentNumber] === index, eliminated: eliminated[currentNumber]?.has(index) }"
-            >
-              <button class="choice-card" type="button" role="radio" :aria-checked="answers[currentNumber] === index" @click="selectAnswer(index)">
-                <span class="choice-letter">{{ String.fromCharCode(65 + index) }}</span>
-                <span class="choice-copy">{{ option }}</span>
-              </button>
-              <button class="eliminate-button" type="button" :aria-label="`Cross out answer ${String.fromCharCode(65 + index)}`" @click="toggleEliminated(index)">
-                <span>{{ String.fromCharCode(65 + index) }}</span>
-              </button>
-            </div>
-          </div>
+    <template v-else-if="stage === 'exam' && currentModule.section === 'math'">
+      <section class="math-workspace" :class="{ 'calculator-visible': calculatorOpen }">
+        <div v-if="calculatorOpen" class="math-calculator-pane"><GeoGebraCalculator @close="calculatorOpen = false" /></div><div v-if="calculatorOpen" class="math-splitter" aria-hidden="true"><span><i /><i /><i /></span></div>
+        <article ref="questionScroller" class="math-question-panel" aria-label="Math question"><div class="math-question-shell" :class="{ 'diagram-question': currentQuestion.diagram }">
+          <div class="question-toolbar"><span class="number-badge">{{ currentNumber }}</span><button class="review-button" :class="{ active: review.has(questionKey) }" type="button" @click="toggleReview"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M3 2.5h12v17l-6-4-6 4v-17Z" /></svg>Mark for Review</button><button class="report-button" type="button" @click="showToast('Thanks. This question has been reported for review.')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>Report</button></div>
+          <figure v-if="currentQuestion.diagram" class="circle-diagram"><svg viewBox="0 0 620 560" role="img" aria-label="Circle with intersecting lines through O"><circle cx="310" cy="260" r="210" /><path d="M228 66 393 458M395 69 226 457" /><text x="201" y="67">S</text><text x="397" y="67">R</text><text x="198" y="489">P</text><text x="401" y="489">Q</text><text x="321" y="280">O</text></svg><figcaption>Note: Figure not drawn to scale.</figcaption></figure>
+          <HighlightablePassage :key="questionKey" :text="currentQuestion.passage" :enabled="highlighterEnabled" :model-value="highlights[questionKey] ?? []" extra-class="math-stem-copy" @update:model-value="updateHighlights" />
+          <h1>{{ currentQuestion.prompt }}</h1>
+          <div class="choices math-choices" role="radiogroup" :aria-label="currentQuestion.prompt"><div v-for="(option, index) in currentQuestion.options" :key="`${questionKey}-${index}`" class="choice-row" :class="{ selected: answers[questionKey] === index, eliminated: eliminated[questionKey]?.has(index) }"><button class="choice-card" type="button" role="radio" :aria-checked="answers[questionKey] === index" @click="selectAnswer(index)"><span class="choice-letter">{{ String.fromCharCode(65 + index) }}</span><span class="choice-copy">{{ option }}</span></button><button class="eliminate-button" type="button" :aria-label="`Cross out answer ${String.fromCharCode(65 + index)}`" @click="toggleEliminated(index)"><span>{{ String.fromCharCode(65 + index) }}</span></button></div></div>
+          <p class="keyboard-tip">Tip:&nbsp; press <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> to pick an answer, then <kbd class="enter-key">Enter</kbd> to go to the next question</p>
+        </div></article>
+      </section>
+    </template>
 
-          <p class="keyboard-tip">
-            Tip:&nbsp; press
-            <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>
-            to pick an answer, then <kbd class="enter-key">Enter</kbd> to go to the next question
-          </p>
-        </div>
-      </article>
-    </section>
+    <section v-else-if="stage === 'review'" class="review-page"><div class="review-shell">
+      <h1>Check Your Work</h1><p>On test day, you won't be able to move on to the next module until time expires.<br />For these practice questions, you can click <strong>Next</strong> when you're ready to move on.</p>
+      <section class="review-card" :aria-label="`${sectionLabel}: ${currentModule.title}`"><div class="review-card-header"><h2>{{ sectionLabel }}: {{ currentModule.title }}</h2><div class="review-legend"><span><i class="unanswered-key" />Unanswered</span><span><i class="review-key" />For Review</span></div></div><div class="review-grid"><button v-for="number in currentModule.total" :key="number" type="button" :class="{ answered: answeredNumbers.has(number), current: currentNumber === number, review: review.has(keyFor(number)) }" @click="stage = 'exam'; goToQuestion(number)">{{ number }}</button></div></section>
+    </div></section>
 
-    <footer class="exam-footer">
-      <button class="question-count" type="button" :aria-expanded="navigatorOpen" @click="navigatorOpen = !navigatorOpen">
-        {{ currentNumber }} of 27
-        <svg viewBox="0 0 18 18" aria-hidden="true"><path :d="navigatorOpen ? 'm4 11 5-5 5 5' : 'm4 7 5 5 5-5'" /></svg>
-      </button>
+    <section v-else class="complete-page"><div class="complete-card"><span class="complete-check">✓</span><h1>Practice Test Complete</h1><p>You completed both Reading and Writing modules, the break, and both Math modules.</p><button type="button" @click="restartExam">Restart Practice Test</button></div></section>
 
-      <div v-if="navigatorOpen" class="navigator-card">
-        <button class="navigator-close" type="button" aria-label="Close question navigator" @click="navigatorOpen = false">×</button>
-        <h2>Section 1, Module 1:<br />Reading and Writing</h2>
-        <div class="navigator-rule" />
-        <div class="navigator-legend">
-          <span><i class="unanswered-key" />Unanswered</span>
-          <span><i class="review-key" />For Review</span>
-        </div>
-        <div class="question-grid">
-          <button
-            v-for="number in 27"
-            :key="number"
-            type="button"
-            :class="{
-              answered: answeredNumbers.has(number),
-              current: currentNumber === number,
-              review: review.has(number),
-            }"
-            @click="goToQuestion(number)"
-          >
-            {{ number }}
-          </button>
-        </div>
-      </div>
-
-      <div class="footer-actions">
-        <button type="button" :disabled="currentNumber <= 1" @click="previousQuestion">Previous</button>
-        <button type="button" :disabled="currentNumber >= 27" @click="nextQuestion">Next</button>
-      </div>
+    <footer v-if="stage !== 'complete'" class="exam-footer">
+      <button class="question-count" type="button" :aria-expanded="navigatorOpen" @click="navigatorOpen = !navigatorOpen">{{ currentNumber }} of {{ currentModule.total }}<svg viewBox="0 0 18 18" aria-hidden="true"><path :d="navigatorOpen ? 'm4 11 5-5 5 5' : 'm4 7 5 5 5-5'" /></svg></button>
+      <div v-if="navigatorOpen" class="navigator-card"><button class="navigator-close" type="button" aria-label="Close question navigator" @click="navigatorOpen = false">×</button><h2>{{ sectionLabel }}:<br />{{ currentModule.title }}</h2><div class="navigator-rule" /><div class="navigator-legend"><span><i class="unanswered-key" />Unanswered</span><span><i class="review-key" />For Review</span></div><div class="question-grid"><button v-for="number in currentModule.total" :key="number" type="button" :class="{ answered: answeredNumbers.has(number), current: currentNumber === number, review: review.has(keyFor(number)) }" @click="stage = 'exam'; goToQuestion(number)">{{ number }}</button></div></div>
+      <div class="footer-actions"><button v-if="stage === 'review'" type="button" @click="previousQuestion">Back</button><button v-else type="button" :disabled="currentNumber <= 1" @click="previousQuestion">Previous</button><button type="button" @click="stage === 'review' ? advanceFromReview() : nextQuestion()">Next</button></div>
     </footer>
-
-    <div v-if="reportToast" class="toast" role="status">Thanks. This question has been reported for review.</div>
+    <MathReferenceSheet v-if="referenceOpen && currentModule.section === 'math'" @close="referenceOpen = false" />
+    <div v-if="toastMessage" class="toast" role="status">{{ toastMessage }}</div>
   </main>
 </template>
