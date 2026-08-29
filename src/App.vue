@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import GeoGebraCalculator from './components/GeoGebraCalculator.vue'
 import HighlightablePassage from './components/HighlightablePassage.vue'
 import MathReferenceSheet from './components/MathReferenceSheet.vue'
+import ScientificCalculator from './components/ScientificCalculator.vue'
 
 type SectionKind = 'reading' | 'math'
-type ExamStage = 'exam' | 'review' | 'break' | 'complete'
+type ExamStage = 'exam' | 'review' | 'break' | 'complete' | 'results'
 type HighlightColor = 'yellow' | 'pink' | 'blue'
 
 type TextHighlight = {
@@ -95,8 +95,13 @@ const directionsOpen = ref(false)
 const moreOpen = ref(false)
 const timerVisible = ref(true)
 const toastMessage = ref('')
+const recommendationRating = ref<number | null>(null)
+const challengeRating = ref<number | null>(null)
+const feedbackText = ref('')
+const feedbackSubmitted = ref(false)
 const timeRemaining = ref(modules[0].duration)
 const breakRemaining = ref(9 * 60 + 52)
+const questionTimeSeconds = reactive<Record<string, number>>({})
 const leftWidth = ref(47.25)
 const passageScroller = ref<HTMLElement | null>(null)
 const questionScroller = ref<HTMLElement | null>(null)
@@ -119,6 +124,152 @@ const answeredNumbers = computed(() => {
   }
   return values
 })
+
+const readingTopics = ['Information and Ideas', 'Craft and Structure', 'Expression of Ideas', 'Standard English Conventions']
+const mathTopics = ['Algebra', 'Advanced Math', 'Problem-Solving and Data Analysis', 'Geometry and Trigonometry']
+
+function correctAnswerFor(module: ModuleDefinition, number: number) {
+  if (module.section === 'reading') return number % 2 === 0 ? 2 : 3
+  return number % 2 === 1 ? 1 : 3
+}
+
+function topicFor(module: ModuleDefinition, number: number) {
+  const topics = module.section === 'reading' ? readingTopics : mathTopics
+  return topics[(number - 1) % topics.length]
+}
+
+function median(values: number[]) {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2)
+}
+
+const moduleStats = computed(() =>
+  modules.map((module) => {
+    let correct = 0
+    let incorrect = 0
+    let seconds = 0
+    const cells = Array.from({ length: module.total }, (_, index) => {
+      const number = index + 1
+      const key = `${module.id}-${number}`
+      const answer = answers[key]
+      seconds += questionTimeSeconds[key] ?? 0
+      if (answer === undefined || answer === null) return { number, status: 'omitted' }
+      if (answer === correctAnswerFor(module, number)) {
+        correct += 1
+        return { number, status: 'correct' }
+      }
+      incorrect += 1
+      return { number, status: 'incorrect' }
+    })
+    const attempted = correct + incorrect
+    return {
+      ...module,
+      correct,
+      incorrect,
+      omitted: module.total - attempted,
+      attempted,
+      averageSeconds: attempted ? Math.round(seconds / attempted) : 0,
+      cells,
+    }
+  }),
+)
+
+const subjectStats = computed(() =>
+  (['reading', 'math'] as SectionKind[]).map((section) => {
+    const stats = moduleStats.value.filter((module) => module.section === section)
+    const total = stats.reduce((sum, module) => sum + module.total, 0)
+    const correct = stats.reduce((sum, module) => sum + module.correct, 0)
+    const incorrect = stats.reduce((sum, module) => sum + module.incorrect, 0)
+    const attempted = correct + incorrect
+    const seconds = stats.reduce((sum, module) => sum + module.averageSeconds * module.attempted, 0)
+    return {
+      section,
+      label: section === 'reading' ? 'Reading and Writing' : 'Math',
+      total,
+      correct,
+      incorrect,
+      omitted: total - attempted,
+      attempted,
+      accuracy: attempted ? Math.round((correct / attempted) * 100) : 0,
+      averageSeconds: attempted ? Math.round(seconds / attempted) : 0,
+      score: 200 + Math.round(((correct / total) * 600) / 10) * 10,
+    }
+  }),
+)
+
+const totalStats = computed(() => {
+  const total = moduleStats.value.reduce((sum, module) => sum + module.total, 0)
+  const correct = moduleStats.value.reduce((sum, module) => sum + module.correct, 0)
+  const incorrect = moduleStats.value.reduce((sum, module) => sum + module.incorrect, 0)
+  const attempted = correct + incorrect
+  return {
+    total,
+    correct,
+    incorrect,
+    unattempted: total - attempted,
+    accuracy: attempted ? Math.round((correct / attempted) * 100) : 0,
+    score: subjectStats.value.reduce((sum, subject) => sum + subject.score, 0),
+  }
+})
+
+const topicStats = computed(() => {
+  const groups = new Map<string, { section: SectionKind; label: string; attempts: number; correct: number; seconds: number[] }>()
+  for (const module of modules) {
+    for (let number = 1; number <= module.total; number += 1) {
+      const label = topicFor(module, number)
+      const group = groups.get(label) ?? { section: module.section, label, attempts: 0, correct: 0, seconds: [] }
+      const key = `${module.id}-${number}`
+      const answer = answers[key]
+      if (answer !== undefined && answer !== null) {
+        group.attempts += 1
+        if (answer === correctAnswerFor(module, number)) group.correct += 1
+        group.seconds.push(questionTimeSeconds[key] ?? 0)
+      }
+      groups.set(label, group)
+    }
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    accuracy: group.attempts ? Math.round((group.correct / group.attempts) * 100) : 0,
+    medianSeconds: median(group.seconds),
+  }))
+})
+
+const weakestTopics = computed(() =>
+  [...topicStats.value].sort((a, b) => a.accuracy - b.accuracy || b.attempts - a.attempts).slice(0, 5),
+)
+
+const difficultyStats = computed(() =>
+  (['reading', 'math'] as SectionKind[]).map((section) => {
+    const buckets = ['Easy', 'Medium', 'Hard'].map((label) => ({ label, seconds: [] as number[] }))
+    modules
+      .filter((module) => module.section === section)
+      .forEach((module) => {
+        for (let number = 1; number <= module.total; number += 1) {
+          const key = `${module.id}-${number}`
+          if (answers[key] !== undefined && answers[key] !== null) buckets[(number - 1) % 3].seconds.push(questionTimeSeconds[key] ?? 0)
+        }
+      })
+    return {
+      section,
+      label: section === 'reading' ? 'English' : 'Math',
+      values: buckets.map((bucket) => ({ ...bucket, averageSeconds: bucket.seconds.length ? Math.round(bucket.seconds.reduce((sum, value) => sum + value, 0) / bucket.seconds.length) : 0 })),
+    }
+  }),
+)
+
+const completedDate = computed(() =>
+  new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date()),
+)
+
+function formatDuration(value: number) {
+  if (!value) return '0:00'
+  const minutes = Math.floor(value / 60)
+  const seconds = value % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
 
 function formatTime(value: number) {
   const minutes = Math.floor(value / 60)
@@ -200,13 +351,41 @@ function restartExam() {
   Object.keys(answers).forEach((key) => delete answers[key])
   Object.keys(eliminated).forEach((key) => delete eliminated[key])
   Object.keys(highlights).forEach((key) => delete highlights[key])
+  Object.keys(questionTimeSeconds).forEach((key) => delete questionTimeSeconds[key])
   review.clear()
+  recommendationRating.value = null
+  challengeRating.value = null
+  feedbackText.value = ''
+  feedbackSubmitted.value = false
   moduleIndex.value = 0
   currentNumber.value = 10
   timeRemaining.value = modules[0].duration
   breakRemaining.value = 9 * 60 + 52
   stage.value = 'exam'
   closeTransientTools()
+}
+
+function openResults() {
+  stage.value = 'results'
+  void nextTick(() => window.scrollTo({ top: 0 }))
+}
+
+function backToCompletion() {
+  stage.value = 'complete'
+  void nextTick(() => window.scrollTo({ top: 0 }))
+}
+
+function submitFeedback() {
+  if (recommendationRating.value === null || challengeRating.value === null) {
+    showToast('Please answer both required rating questions.')
+    return
+  }
+  feedbackSubmitted.value = true
+  showToast('Thanks — your feedback has been recorded.')
+}
+
+function downloadReport() {
+  window.print()
 }
 
 function toggleReview() {
@@ -270,7 +449,7 @@ function onKeydown(event: KeyboardEvent) {
     referenceOpen.value = false
     return
   }
-  if (stage.value !== 'exam' || target?.closest('button, input, select, textarea, [contenteditable], .user-highlight')) return
+  if (stage.value !== 'exam' || calculatorOpen.value || target?.closest('button, input, select, textarea, [contenteditable], .user-highlight')) return
   if (['1', '2', '3', '4'].includes(event.key)) {
     event.preventDefault()
     selectAnswer(Number(event.key) - 1)
@@ -284,6 +463,7 @@ function onKeydown(event: KeyboardEvent) {
 onMounted(() => {
   countdownId = window.setInterval(() => {
     if ((stage.value === 'exam' || stage.value === 'review') && timeRemaining.value > 0) timeRemaining.value -= 1
+    if (stage.value === 'exam') questionTimeSeconds[questionKey.value] = (questionTimeSeconds[questionKey.value] ?? 0) + 1
     if (stage.value === 'break' && breakRemaining.value > 0) breakRemaining.value -= 1
   }, 1000)
   window.addEventListener('keydown', onKeydown)
@@ -316,7 +496,116 @@ onBeforeUnmount(() => {
     <div v-if="toastMessage" class="toast break-toast" role="status">{{ toastMessage }}</div>
   </main>
 
-  <main v-else class="exam-app" :class="{ 'review-stage': stage === 'review', 'complete-stage': stage === 'complete' }" :style="{ '--split': `${leftWidth}%` }">
+  <main v-else-if="stage === 'complete'" class="completion-page">
+    <section class="completion-card">
+      <button class="completion-back" type="button" @click="restartExam"><span aria-hidden="true">‹</span> Back to Predicted Papers</button>
+      <div class="completion-mark" aria-hidden="true">✓</div>
+      <h1>Congratulations!</h1>
+      <p>You've completed</p>
+      <h2>OnePrep Predicted Test #1</h2>
+      <button class="view-results-button" type="button" @click="openResults">View Results</button>
+
+      <form class="feedback-card" @submit.prevent="submitFeedback">
+        <fieldset>
+          <legend>How likely are you to recommend OnePrep predicted papers to a friend? <span aria-hidden="true">*</span></legend>
+          <div class="rating-row" role="radiogroup" aria-label="Recommendation rating">
+            <button v-for="rating in 11" :key="`recommend-${rating - 1}`" type="button" :class="{ selected: recommendationRating === rating - 1 }" :aria-pressed="recommendationRating === rating - 1" @click="recommendationRating = rating - 1">{{ rating - 1 }}</button>
+          </div>
+          <div class="rating-labels"><span>trash</span><span>amazinggg</span></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>How much did that challenge you? <span aria-hidden="true">*</span></legend>
+          <div class="rating-row" role="radiogroup" aria-label="Challenge rating">
+            <button v-for="rating in 11" :key="`challenge-${rating - 1}`" type="button" :class="{ selected: challengeRating === rating - 1 }" :aria-pressed="challengeRating === rating - 1" @click="challengeRating = rating - 1">{{ rating - 1 }}</button>
+          </div>
+          <div class="rating-labels"><span>light work</span><span>pretty hard bruh</span></div>
+        </fieldset>
+
+        <label class="feedback-label" for="completion-feedback">Anything else you want to tell us? <span>(optional - we read all replies)</span></label>
+        <textarea id="completion-feedback" v-model="feedbackText" rows="5" />
+        <button class="feedback-submit" type="submit" :disabled="feedbackSubmitted">{{ feedbackSubmitted ? 'Submitted' : 'Submit' }} <span aria-hidden="true">→</span></button>
+        <p v-if="feedbackSubmitted" class="feedback-success" role="status">Thanks — your feedback has been recorded.</p>
+      </form>
+    </section>
+    <div v-if="toastMessage" class="toast" role="status">{{ toastMessage }}</div>
+  </main>
+
+  <main v-else-if="stage === 'results'" class="results-page">
+    <article class="results-shell">
+      <button class="report-back" type="button" @click="backToCompletion"><span aria-hidden="true">‹</span> Back to Predicted Papers</button>
+
+      <header class="report-title-row">
+        <div class="report-title-copy">
+          <span class="report-title-icon" aria-hidden="true"><i /><i /><i /></span>
+          <div><h1>OnePrep Predicted Test #1</h1><p>All modules</p></div>
+        </div>
+        <div class="report-title-actions"><span>Completed on {{ completedDate }}</span><button type="button" @click="downloadReport"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 18v3h14v-3" /></svg>Download report</button></div>
+      </header>
+
+      <section class="report-disclaimer">
+        <div class="report-brand-mark" aria-hidden="true">OP</div>
+        <div><h2>OnePrep Predicted Papers Disclaimer</h2><p>These papers use unseen questions from the OnePrep question bank and are calibrated to match the difficulty of recent Digital SAT® exams. This result is an estimated practice score and is not an official College Board score.</p></div>
+      </section>
+
+      <section class="report-section" aria-labelledby="overview-title">
+        <h2 id="overview-title" class="report-section-title"><span aria-hidden="true">◔</span>Overview</h2>
+        <div class="analysis-banner"><div><strong>Your complete analysis is ready.</strong><span>Every number below reflects this practice session.</span></div><span class="analysis-banner-badge">98 questions</span></div>
+        <div class="score-grid">
+          <div class="score-card total-score-card"><span>Estimated Total Score</span><strong>{{ totalStats.score }}</strong><small>400–1600</small><div class="subject-score-row"><div v-for="subject in subjectStats" :key="subject.section"><span>{{ subject.label }}</span><strong>{{ subject.score }}</strong><small>200–800</small></div></div></div>
+          <div class="score-card distribution-card"><div class="distribution-labels"><span>Practice range</span><strong>You</strong></div><svg viewBox="0 0 520 210" role="img" aria-label="Estimated score distribution"><defs><linearGradient id="curveFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#aeeaff" stop-opacity=".65" /><stop offset="1" stop-color="#effaff" stop-opacity=".18" /></linearGradient></defs><path d="M15 185C75 180 105 161 142 127C184 88 210 43 260 39C310 43 336 88 378 127C415 161 445 180 505 185V198H15Z" fill="url(#curveFill)" /><path d="M15 185C75 180 105 161 142 127C184 88 210 43 260 39C310 43 336 88 378 127C415 161 445 180 505 185" fill="none" stroke="#54c7f1" stroke-width="3" /><line x1="280" y1="28" x2="280" y2="194" stroke="#171717" stroke-width="2" stroke-dasharray="7 7" /><circle cx="280" cy="105" r="8" fill="#111" /></svg><p>Estimated score based on {{ totalStats.correct }} correct answers across all four modules.</p></div>
+        </div>
+        <div class="summary-stat-grid"><div><span>Correct</span><strong>{{ totalStats.correct }}<small>/{{ totalStats.total }}</small></strong></div><div><span>Wrong</span><strong>{{ totalStats.incorrect }}</strong></div><div><span>Accuracy</span><strong>{{ totalStats.accuracy }}%</strong></div><div><span>Unattempted</span><strong>{{ totalStats.unattempted }}</strong></div></div>
+      </section>
+
+      <section class="report-section" aria-labelledby="module-title">
+        <h2 id="module-title" class="report-section-title"><span aria-hidden="true">▦</span>Module performance</h2>
+        <div class="module-report-grid">
+          <article v-for="module in moduleStats" :key="module.id" class="module-report-card">
+            <h3>{{ module.section === 'reading' ? 'R&W' : 'Math' }} – Module {{ module.moduleNumber }}<span v-if="module.moduleNumber === 2"> (Easy)</span></h3>
+            <div class="module-counts"><span><b>{{ module.correct }}</b>correct</span><span><b>{{ module.incorrect }}</b>incorrect</span><span><b>{{ module.omitted }}</b>omitted</span></div>
+            <div class="module-cell-grid"><span v-for="cell in module.cells" :key="cell.number" :class="cell.status" :title="`Question ${cell.number}: ${cell.status}`">{{ cell.number }}</span></div>
+            <p>Avg <strong>{{ formatDuration(module.averageSeconds) }}</strong> / {{ module.section === 'reading' ? '1:11' : '1:35' }}</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="report-section" aria-labelledby="accuracy-title">
+        <h2 id="accuracy-title" class="report-section-title"><span aria-hidden="true">◎</span>Accuracy</h2>
+        <div class="accuracy-card">
+          <div v-for="subject in subjectStats" :key="subject.section" class="accuracy-subject-row"><div><strong>{{ subject.label }}</strong><span>{{ subject.correct }} correct · {{ subject.incorrect }} wrong · {{ subject.omitted }} unattempted</span></div><div class="accuracy-track" aria-hidden="true"><span :style="{ width: `${subject.accuracy}%` }" /></div><b>{{ subject.accuracy }}%</b></div>
+        </div>
+      </section>
+
+      <section class="report-section" aria-labelledby="time-title">
+        <h2 id="time-title" class="report-section-title"><span aria-hidden="true">◷</span>Time management</h2>
+        <div class="pacing-card">
+          <h3>Pacing by topic</h3>
+          <p>Each row compares your median time per attempted question with the recommended pace for that subject.</p>
+          <div class="pacing-columns">
+            <div v-for="section in ['reading', 'math']" :key="section" class="pacing-column"><h4>{{ section === 'reading' ? 'English' : 'Math' }}</h4><div v-for="topic in topicStats.filter((item) => item.section === section)" :key="topic.label" class="pacing-row"><div><span>{{ topic.label }}</span><small>{{ topic.attempts }} attempted</small></div><div class="pacing-track"><span class="benchmark" :style="{ width: `${section === 'reading' ? 59 : 79}%` }" /><i :style="{ left: `${Math.min(96, Math.max(2, (topic.medianSeconds / 120) * 100))}%` }" /></div><strong>{{ formatDuration(topic.medianSeconds) }}</strong></div></div>
+          </div>
+        </div>
+
+        <div class="confidence-card">
+          <h3>Confidence quadrant</h3><p>Time per question runs left to right; accuracy runs bottom to top. Each dot is a skill topic.</p>
+          <div class="quadrant-grid">
+            <div v-for="section in ['reading', 'math']" :key="`quadrant-${section}`" class="quadrant-column"><h4>{{ section === 'reading' ? 'English' : 'Math' }}</h4><div class="quadrant-chart"><span class="quad-label proficient">Proficient</span><span class="quad-label inefficient">Inefficient</span><span class="quad-label careless">Careless</span><span class="quad-label struggling">Struggling</span><i v-for="topic in topicStats.filter((item) => item.section === section)" :key="topic.label" class="quadrant-dot" :class="{ correct: topic.accuracy >= 50 }" :style="{ left: `${Math.min(94, Math.max(5, (topic.medianSeconds / 120) * 100))}%`, top: `${Math.min(91, Math.max(7, 100 - topic.accuracy))}%` }" :title="`${topic.label}: ${topic.accuracy}% at ${formatDuration(topic.medianSeconds)}`" /></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="report-section" aria-labelledby="skill-title">
+        <h2 id="skill-title" class="report-section-title"><span aria-hidden="true">▥</span>Skill breakdown</h2>
+        <div class="weakest-card"><h3>5 topics costing the most points</h3><ol><li v-for="(topic, index) in weakestTopics" :key="topic.label"><span class="topic-rank">{{ String(index + 1).padStart(2, '0') }}</span><div><small>{{ topic.accuracy < 60 ? 'Needs work' : 'On track' }} · {{ topic.section === 'reading' ? 'Reading & Writing' : 'Math' }} · {{ topic.attempts }} attempts</small><strong>{{ topic.label }}</strong></div><b>{{ topic.accuracy }}%</b></li></ol></div>
+        <div class="skill-cards"><article v-for="section in ['reading', 'math']" :key="`skills-${section}`"><h3>{{ section === 'reading' ? 'English' : 'Math' }}</h3><p>Accuracy by topic</p><div v-for="topic in topicStats.filter((item) => item.section === section)" :key="topic.label" class="skill-row"><div><span>{{ topic.label }}</span><small>{{ topic.attempts }} attempts</small></div><div class="skill-track"><i :style="{ left: `${topic.accuracy}%` }" /></div><strong>{{ topic.accuracy }}%</strong></div></article></div>
+        <div class="difficulty-cards"><article v-for="subject in difficultyStats" :key="subject.section"><h3>{{ subject.label }}</h3><p>Time per question by difficulty</p><div class="difficulty-body"><div class="time-ring"><strong>{{ formatDuration(subjectStats.find((item) => item.section === subject.section)?.averageSeconds ?? 0) }}</strong><span>average</span></div><div class="difficulty-list"><div v-for="value in subject.values" :key="value.label"><span>{{ value.label }}</span><strong>{{ formatDuration(value.averageSeconds) }}</strong><small>{{ value.seconds.length }} attempted</small></div></div></div></article></div>
+      </section>
+    </article>
+    <div v-if="toastMessage" class="toast" role="status">{{ toastMessage }}</div>
+  </main>
+
+  <main v-else class="exam-app" :class="{ 'review-stage': stage === 'review' }" :style="{ '--split': `${leftWidth}%` }">
     <header class="exam-header">
       <div class="header-left">
         <button class="directions-button" type="button" :aria-expanded="directionsOpen" @click="directionsOpen = !directionsOpen">Directions<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg></button>
@@ -358,7 +647,7 @@ onBeforeUnmount(() => {
 
     <template v-else-if="stage === 'exam' && currentModule.section === 'math'">
       <section class="math-workspace" :class="{ 'calculator-visible': calculatorOpen }">
-        <div v-if="calculatorOpen" class="math-calculator-pane"><GeoGebraCalculator @close="calculatorOpen = false" /></div><div v-if="calculatorOpen" class="math-splitter" aria-hidden="true"><span><i /><i /><i /></span></div>
+        <div v-if="calculatorOpen" class="math-calculator-pane"><ScientificCalculator @close="calculatorOpen = false" /></div><div v-if="calculatorOpen" class="math-splitter" aria-hidden="true"><span><i /><i /><i /></span></div>
         <article ref="questionScroller" class="math-question-panel" aria-label="Math question"><div class="math-question-shell" :class="{ 'diagram-question': currentQuestion.diagram }">
           <div class="question-toolbar"><span class="number-badge">{{ currentNumber }}</span><button class="review-button" :class="{ active: review.has(questionKey) }" type="button" @click="toggleReview"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M3 2.5h12v17l-6-4-6 4v-17Z" /></svg>Mark for Review</button><button class="report-button" type="button" @click="showToast('Thanks. This question has been reported for review.')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>Report</button></div>
           <figure v-if="currentQuestion.diagram" class="circle-diagram"><svg viewBox="0 0 620 560" role="img" aria-label="Circle with intersecting lines through O"><circle cx="310" cy="260" r="210" /><path d="M228 66 393 458M395 69 226 457" /><text x="201" y="67">S</text><text x="397" y="67">R</text><text x="198" y="489">P</text><text x="401" y="489">Q</text><text x="321" y="280">O</text></svg><figcaption>Note: Figure not drawn to scale.</figcaption></figure>
@@ -375,9 +664,7 @@ onBeforeUnmount(() => {
       <section class="review-card" :aria-label="`${sectionLabel}: ${currentModule.title}`"><div class="review-card-header"><h2>{{ sectionLabel }}: {{ currentModule.title }}</h2><div class="review-legend"><span><i class="unanswered-key" />Unanswered</span><span><i class="review-key" />For Review</span></div></div><div class="review-grid"><button v-for="number in currentModule.total" :key="number" type="button" :class="{ answered: answeredNumbers.has(number), current: currentNumber === number, review: review.has(keyFor(number)) }" @click="stage = 'exam'; goToQuestion(number)">{{ number }}</button></div></section>
     </div></section>
 
-    <section v-else class="complete-page"><div class="complete-card"><span class="complete-check">✓</span><h1>Practice Test Complete</h1><p>You completed both Reading and Writing modules, the break, and both Math modules.</p><button type="button" @click="restartExam">Restart Practice Test</button></div></section>
-
-    <footer v-if="stage !== 'complete'" class="exam-footer">
+    <footer class="exam-footer">
       <button class="question-count" type="button" :aria-expanded="navigatorOpen" @click="navigatorOpen = !navigatorOpen">{{ currentNumber }} of {{ currentModule.total }}<svg viewBox="0 0 18 18" aria-hidden="true"><path :d="navigatorOpen ? 'm4 11 5-5 5 5' : 'm4 7 5 5 5-5'" /></svg></button>
       <div v-if="navigatorOpen" class="navigator-card"><button class="navigator-close" type="button" aria-label="Close question navigator" @click="navigatorOpen = false">×</button><h2>{{ sectionLabel }}:<br />{{ currentModule.title }}</h2><div class="navigator-rule" /><div class="navigator-legend"><span><i class="unanswered-key" />Unanswered</span><span><i class="review-key" />For Review</span></div><div class="question-grid"><button v-for="number in currentModule.total" :key="number" type="button" :class="{ answered: answeredNumbers.has(number), current: currentNumber === number, review: review.has(keyFor(number)) }" @click="stage = 'exam'; goToQuestion(number)">{{ number }}</button></div></div>
       <div class="footer-actions"><button v-if="stage === 'review'" type="button" @click="previousQuestion">Back</button><button v-else type="button" :disabled="currentNumber <= 1" @click="previousQuestion">Previous</button><button type="button" @click="stage === 'review' ? advanceFromReview() : nextQuestion()">Next</button></div>
