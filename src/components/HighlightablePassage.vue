@@ -2,12 +2,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 type HighlightColor = 'yellow' | 'pink' | 'blue'
+type HighlightUnderline = 'solid' | 'dashed' | 'dotted' | 'none'
 
 type TextHighlight = {
   id: string
   start: number
   end: number
   color: HighlightColor
+  underline?: HighlightUnderline
+  note?: string
 }
 
 type TextSegment = {
@@ -37,15 +40,29 @@ const activeHighlightId = ref<string | null>(null)
 const toolbarLeft = ref(0)
 const toolbarTop = ref(0)
 const toolbarPlacement = ref<'above' | 'below'>('above')
+const underlineMenuOpen = ref(false)
+const noteEditorOpen = ref(false)
+const noteDraft = ref('')
+const noteInput = ref<HTMLTextAreaElement | null>(null)
 let scrollOwner: HTMLElement | null = null
+let toolbarAnchorRect: DOMRect | null = null
 
 const palette: Array<{ color: HighlightColor; label: string }> = [
   { color: 'yellow', label: 'Yellow highlight' },
-  { color: 'pink', label: 'Pink highlight' },
   { color: 'blue', label: 'Blue highlight' },
+  { color: 'pink', label: 'Pink highlight' },
+]
+
+const underlineOptions: Array<{ value: HighlightUnderline; label: string }> = [
+  { value: 'solid', label: 'Solid underline' },
+  { value: 'dashed', label: 'Dashed underline' },
+  { value: 'dotted', label: 'Dotted underline' },
+  { value: 'none', label: 'No underline' },
 ]
 
 const activeHighlight = computed(() => props.modelValue.find((highlight) => highlight.id === activeHighlightId.value) ?? null)
+const activeUnderline = computed<HighlightUnderline>(() => activeHighlight.value?.underline ?? 'none')
+const hasActiveNote = computed(() => Boolean(activeHighlight.value?.note?.trim()))
 
 const segments = computed<TextSegment[]>(() => {
   const ordered = [...props.modelValue]
@@ -72,10 +89,11 @@ const toolbarStyle = computed(() => ({
   top: `${toolbarTop.value}px`,
 }))
 
-function positionToolbar(rect: DOMRect) {
-  const horizontalPadding = 86
-  toolbarLeft.value = Math.min(window.innerWidth - horizontalPadding, Math.max(horizontalPadding, rect.left + rect.width / 2))
-  if (rect.top >= 54) {
+function positionToolbar(rect: DOMRect, expanded = false) {
+  toolbarAnchorRect = rect
+  const toolbarHalfWidth = Math.min(188, Math.max(80, (window.innerWidth - 24) / 2))
+  toolbarLeft.value = Math.min(window.innerWidth - toolbarHalfWidth - 12, Math.max(toolbarHalfWidth + 12, rect.left + rect.width / 2))
+  if (rect.top >= (expanded ? 190 : 72)) {
     toolbarPlacement.value = 'above'
     toolbarTop.value = rect.top - 8
   } else {
@@ -91,6 +109,10 @@ function clearNativeSelection() {
 function closeToolbar(clearSelection = true) {
   toolbarVisible.value = false
   activeHighlightId.value = null
+  underlineMenuOpen.value = false
+  noteEditorOpen.value = false
+  noteDraft.value = ''
+  toolbarAnchorRect = null
   if (clearSelection) clearNativeSelection()
 }
 
@@ -105,12 +127,15 @@ function createHighlight(start: number, end: number, rect: DOMRect) {
   const overlaps = props.modelValue.filter((highlight) => highlight.start < end && highlight.end > start)
   const mergedStart = overlaps.reduce((value, highlight) => Math.min(value, highlight.start), start)
   const mergedEnd = overlaps.reduce((value, highlight) => Math.max(value, highlight.end), end)
-  const id = `highlight-${currentId++}`
+  const id = `highlight-${Date.now()}-${currentId++}`
   const next = props.modelValue.filter((highlight) => !overlaps.includes(highlight))
-  next.push({ id, start: mergedStart, end: mergedEnd, color: 'yellow' })
+  next.push({ id, start: mergedStart, end: mergedEnd, color: 'yellow', underline: 'none', note: '' })
   next.sort((a, b) => a.start - b.start)
   emit('update:modelValue', next)
   activeHighlightId.value = id
+  noteDraft.value = ''
+  underlineMenuOpen.value = false
+  noteEditorOpen.value = false
   positionToolbar(rect)
   toolbarVisible.value = true
   void nextTick(clearNativeSelection)
@@ -147,17 +172,53 @@ function onPassageMouseup() {
 function openExistingHighlight(event: MouseEvent | KeyboardEvent, id: string) {
   const target = event.currentTarget as HTMLElement
   activeHighlightId.value = id
+  noteDraft.value = props.modelValue.find((highlight) => highlight.id === id)?.note ?? ''
+  underlineMenuOpen.value = false
+  noteEditorOpen.value = false
   positionToolbar(target.getBoundingClientRect())
   toolbarVisible.value = true
   clearNativeSelection()
 }
 
 function setColor(color: HighlightColor) {
+  updateActiveHighlight({ color })
+}
+
+function updateActiveHighlight(patch: Partial<Pick<TextHighlight, 'color' | 'underline' | 'note'>>) {
   if (!activeHighlightId.value) return
-  emit(
-    'update:modelValue',
-    props.modelValue.map((highlight) => (highlight.id === activeHighlightId.value ? { ...highlight, color } : highlight)),
-  )
+  emit('update:modelValue', props.modelValue.map((highlight) => (highlight.id === activeHighlightId.value ? { ...highlight, ...patch } : highlight)))
+}
+
+function toggleUnderlineMenu() {
+  underlineMenuOpen.value = !underlineMenuOpen.value
+  noteEditorOpen.value = false
+}
+
+function setUnderline(underline: HighlightUnderline) {
+  updateActiveHighlight({ underline })
+  underlineMenuOpen.value = false
+}
+
+function toggleNoteEditor() {
+  underlineMenuOpen.value = false
+  noteEditorOpen.value = !noteEditorOpen.value
+  if (!noteEditorOpen.value) return
+  noteDraft.value = activeHighlight.value?.note ?? ''
+  if (toolbarAnchorRect) positionToolbar(toolbarAnchorRect, true)
+  void nextTick(() => noteInput.value?.focus())
+}
+
+function updateNote() {
+  updateActiveHighlight({ note: noteDraft.value })
+}
+
+function commitNote(closeEditor = false) {
+  noteDraft.value = noteDraft.value.trimEnd()
+  updateNote()
+  if (closeEditor) {
+    noteEditorOpen.value = false
+    if (toolbarAnchorRect) positionToolbar(toolbarAnchorRect)
+  }
 }
 
 function removeHighlight() {
@@ -174,7 +235,16 @@ function onDocumentPointerdown(event: PointerEvent) {
 }
 
 function onEscape(event: KeyboardEvent) {
-  if (event.key === 'Escape' && toolbarVisible.value) closeToolbar()
+  if (event.key !== 'Escape' || !toolbarVisible.value) return
+  if (underlineMenuOpen.value) {
+    underlineMenuOpen.value = false
+    return
+  }
+  if (noteEditorOpen.value) {
+    commitNote(true)
+    return
+  }
+  closeToolbar()
 }
 
 function onViewportChange() {
@@ -218,7 +288,10 @@ onBeforeUnmount(() => {
   ><template v-for="(segment, index) in segments" :key="segment.highlight?.id ?? `text-${index}`"><mark
       v-if="segment.highlight"
       class="user-highlight"
-      :class="`highlight-${segment.highlight.color}`"
+      :class="[
+        `highlight-${segment.highlight.color}`,
+        (segment.highlight.underline ?? 'none') !== 'none' ? `underline-${segment.highlight.underline}` : '',
+      ]"
       :data-highlight-id="segment.highlight.id"
       tabindex="0"
       aria-label="Highlighted text. Press Enter to edit."
@@ -231,27 +304,86 @@ onBeforeUnmount(() => {
     <div
       v-if="toolbarVisible && activeHighlight"
       class="highlight-toolbar"
-      :class="`placement-${toolbarPlacement}`"
+      :class="[`placement-${toolbarPlacement}`, { 'is-note-editor': noteEditorOpen }]"
       :style="toolbarStyle"
       role="toolbar"
-      aria-label="Highlight colors"
+      aria-label="Highlight tools"
     >
-      <button
-        v-for="item in palette"
-        :key="item.color"
-        class="highlight-swatch"
-        :class="[`swatch-${item.color}`, { selected: activeHighlight.color === item.color }]"
-        type="button"
-        :aria-label="item.label"
-        :aria-pressed="activeHighlight.color === item.color"
-        :title="item.label"
-        @pointerdown.prevent
-        @click="setColor(item.color)"
-      ><svg v-if="activeHighlight.color === item.color" viewBox="0 0 14 14" aria-hidden="true"><path d="m3 7 2.4 2.5L11 4" /></svg></button>
-      <span class="toolbar-divider" />
-      <button class="remove-highlight" type="button" aria-label="Remove highlight" title="Remove highlight" @pointerdown.prevent @click="removeHighlight">
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 6h10M8 6V4h4v2m-6 2 1 8h6l1-8" /></svg>
-      </button>
+      <div class="highlight-toolbar-main">
+        <button
+          v-for="item in palette"
+          :key="item.color"
+          class="highlight-swatch"
+          :class="[`swatch-${item.color}`, { selected: activeHighlight.color === item.color }]"
+          type="button"
+          :aria-label="item.label"
+          :aria-pressed="activeHighlight.color === item.color"
+          :title="item.label"
+          @pointerdown.prevent
+          @click="setColor(item.color)"
+        />
+
+        <div class="highlight-tool-wrap">
+          <button
+            class="highlight-tool-button underline-tool"
+            :class="{ active: activeUnderline !== 'none' || underlineMenuOpen }"
+            type="button"
+            aria-label="Underline options"
+            :aria-pressed="activeUnderline !== 'none'"
+            :aria-expanded="underlineMenuOpen"
+            aria-haspopup="menu"
+            title="Underline options"
+            @pointerdown.prevent
+            @click="toggleUnderlineMenu"
+          ><span class="underline-glyph" aria-hidden="true">U</span></button>
+          <div v-if="underlineMenuOpen" class="underline-menu" role="menu" aria-label="Underline styles">
+            <button
+              v-for="option in underlineOptions"
+              :key="option.value"
+              class="underline-option"
+              :class="{ selected: activeUnderline === option.value }"
+              type="button"
+              role="menuitemradio"
+              :aria-checked="activeUnderline === option.value"
+              :aria-label="option.label"
+              @pointerdown.prevent
+              @click="setUnderline(option.value)"
+            ><span v-if="option.value !== 'none'" class="underline-option-glyph" :class="`style-${option.value}`">U</span><span v-else class="none-label">None</span></button>
+          </div>
+        </div>
+
+        <button
+          class="highlight-tool-button note-tool"
+          :class="{ active: noteEditorOpen }"
+          type="button"
+          aria-label="Add or edit note"
+          :aria-pressed="noteEditorOpen"
+          title="Add or edit note"
+          @pointerdown.prevent
+          @click="toggleNoteEditor"
+        >
+          <span v-if="hasActiveNote" class="note-status-dot" aria-hidden="true" />
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4.5h13a2 2 0 0 1 2 2v9.5a2 2 0 0 1-2 2h-4l-3.8 2.5V18h-5.2a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2Z" /></svg>
+        </button>
+
+        <button class="highlight-tool-button remove-highlight" type="button" aria-label="Remove highlight" title="Remove highlight" @pointerdown.prevent @click="removeHighlight">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10M10 7V5h4v2m-5 3 .6 8h4.8l.6-8M6 7l1 13h10l1-13" /></svg>
+        </button>
+      </div>
+
+      <textarea
+        v-if="noteEditorOpen"
+        ref="noteInput"
+        v-model="noteDraft"
+        class="highlight-note-input"
+        aria-label="Highlight note"
+        placeholder="Add a note..."
+        rows="3"
+        @input="updateNote"
+        @blur="commitNote(false)"
+        @keydown.enter.exact.prevent="commitNote(true)"
+      />
+      <div v-else-if="hasActiveNote" class="highlight-note-preview" role="note">{{ activeHighlight.note }}</div>
     </div>
   </Teleport>
 </template>
@@ -291,22 +423,42 @@ onBeforeUnmount(() => {
 }
 
 .highlight-yellow { background: #fff34c; }
-.highlight-pink { background: #ff9abb; }
-.highlight-blue { background: #83d5ff; }
+.highlight-pink { background: #f2b6df; }
+.highlight-blue { background: #b9dcf6; }
+
+.underline-solid {
+  text-decoration: underline solid currentColor 2px;
+  text-underline-offset: 3px;
+}
+
+.underline-dashed {
+  text-decoration: underline dashed currentColor 2px;
+  text-underline-offset: 3px;
+}
+
+.underline-dotted {
+  text-decoration: underline dotted currentColor 2px;
+  text-underline-offset: 3px;
+}
 
 .highlight-toolbar {
   position: fixed;
   z-index: 120;
+  box-sizing: border-box;
+  width: min(376px, calc(100vw - 24px));
+  padding: 10px 12px 11px;
+  border: 2px solid #e5e5e5;
+  border-radius: 26px;
+  background: #fff;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
+  animation: toolbar-in 120ms ease-out;
+}
+
+.highlight-toolbar-main {
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 9px;
-  border: 1px solid #d9d9d9;
-  border-radius: 7px;
-  background: #fff;
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.14);
-  animation: toolbar-in 120ms ease-out;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .highlight-toolbar.placement-above {
@@ -320,86 +472,195 @@ onBeforeUnmount(() => {
 .highlight-toolbar::after {
   position: absolute;
   left: 50%;
-  width: 8px;
-  height: 8px;
-  border-right: 1px solid #d9d9d9;
-  border-bottom: 1px solid #d9d9d9;
+  z-index: -1;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #e5e5e5;
+  border-bottom: 2px solid #e5e5e5;
   background: #fff;
   content: '';
 }
 
 .highlight-toolbar.placement-above::after {
-  bottom: -5px;
+  bottom: -7px;
   transform: translateX(-50%) rotate(45deg);
 }
 
 .highlight-toolbar.placement-below::after {
-  top: -5px;
+  top: -7px;
   transform: translateX(-50%) rotate(225deg);
 }
 
 .highlight-swatch,
-.remove-highlight {
+.highlight-tool-button {
   position: relative;
   display: grid;
-  width: 22px;
-  height: 22px;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
   padding: 0;
   place-items: center;
-  border: 1px solid rgba(0, 0, 0, 0.09);
+  border: 2px solid rgba(0, 0, 0, 0.08);
   border-radius: 50%;
   cursor: pointer;
+  transition: transform 110ms ease, box-shadow 110ms ease, border-color 110ms ease, background 110ms ease;
 }
 
-.highlight-swatch:hover {
-  transform: scale(1.08);
+.highlight-swatch:hover,
+.highlight-tool-button:hover {
+  transform: translateY(-1px);
 }
 
 .highlight-swatch.selected {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #343434;
+  border-color: #111;
+  box-shadow: inset 0 0 0 1px #111;
 }
 
-.highlight-swatch svg {
-  width: 13px;
-  height: 13px;
+.swatch-yellow { background: #ffe88d; }
+.swatch-blue { background: #bdddf4; }
+.swatch-pink { background: #f3bce4; }
+
+.highlight-tool-button {
+  background: #fff;
+  color: #6e6e6e;
+}
+
+.highlight-tool-button.active {
+  border-color: #6d6d6d;
+  box-shadow: inset 0 0 0 1px #6d6d6d;
+  color: #202020;
+}
+
+.highlight-tool-button svg {
+  width: 25px;
+  height: 25px;
   fill: none;
-  stroke: rgba(0, 0, 0, 0.68);
+  stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
 }
 
-.swatch-yellow { background: #fff34c; }
-.swatch-pink { background: #ff9abb; }
-.swatch-blue { background: #83d5ff; }
-
-.toolbar-divider {
-  width: 1px;
-  height: 19px;
-  margin: 0 1px;
-  background: #dedede;
+.underline-glyph {
+  padding-bottom: 1px;
+  border-bottom: 2px solid currentColor;
+  font: 500 22px/0.9 Arial, sans-serif;
 }
 
-.remove-highlight {
+.highlight-tool-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.underline-menu {
+  position: absolute;
+  top: 53px;
+  left: 50%;
+  z-index: 4;
+  display: grid;
+  width: 98px;
+  padding: 7px 0 9px;
+  overflow: hidden;
+  border: 2px solid #dedede;
+  border-radius: 25px;
+  background: #fff;
+  box-shadow: 0 5px 9px rgba(0, 0, 0, 0.16);
+  transform: translateX(-50%);
+}
+
+.underline-option {
+  display: grid;
+  min-height: 47px;
+  padding: 0;
+  place-items: center;
   border: 0;
-  border-radius: 5px;
   background: transparent;
-  color: #646464;
+  color: #161616;
+  cursor: pointer;
 }
 
-.remove-highlight:hover {
-  background: #f1f1f1;
+.underline-option:hover,
+.underline-option.selected {
+  background: #f3f3f3;
+}
+
+.underline-option-glyph {
+  padding: 0 2px 2px;
+  border-bottom-width: 2px;
+  border-bottom-color: currentColor;
+  font: 500 20px/1 Arial, sans-serif;
+}
+
+.underline-option-glyph.style-solid { border-bottom-style: solid; }
+.underline-option-glyph.style-dashed { border-bottom-style: dashed; }
+.underline-option-glyph.style-dotted { border-bottom-style: dotted; }
+
+.none-label {
+  color: #7a7a7a;
+  font: 500 20px/1 Arial, sans-serif;
+}
+
+.note-status-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #2b7fff;
+}
+
+.highlight-note-input,
+.highlight-note-preview {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 8px;
   color: #202020;
+  font: 18px/1.35 Arial, sans-serif;
 }
 
-.remove-highlight svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.45;
+.highlight-note-input {
+  min-height: 84px;
+  padding: 4px 5px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.highlight-note-input::placeholder {
+  color: #858585;
+  opacity: 1;
+}
+
+.highlight-note-preview {
+  min-height: 36px;
+  padding: 3px 7px 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+}
+
+.highlight-toolbar:focus-within {
+  border-color: #d7d7d7;
+}
+
+@media (max-width: 410px) {
+  .highlight-toolbar {
+    padding-inline: 9px;
+  }
+
+  .highlight-toolbar-main {
+    gap: 5px;
+  }
+
+  .highlight-swatch,
+  .highlight-tool-button {
+    width: 42px;
+    height: 42px;
+  }
 }
 
 @keyframes toolbar-in {

@@ -7,12 +7,15 @@ import ScientificCalculator from './components/ScientificCalculator.vue'
 type SectionKind = 'reading' | 'math'
 type ExamStage = 'exam' | 'review' | 'break' | 'complete' | 'results'
 type HighlightColor = 'yellow' | 'pink' | 'blue'
+type HighlightUnderline = 'solid' | 'dashed' | 'dotted' | 'none'
 
 type TextHighlight = {
   id: string
   start: number
   end: number
   color: HighlightColor
+  underline?: HighlightUnderline
+  note?: string
 }
 
 type ModuleDefinition = {
