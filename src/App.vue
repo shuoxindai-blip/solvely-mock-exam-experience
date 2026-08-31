@@ -88,6 +88,7 @@ const eliminated = reactive<Record<string, Set<number>>>({})
 const review = reactive(new Set<string>())
 const highlights = reactive<Record<string, TextHighlight[]>>({})
 const highlighterEnabled = ref(false)
+const eliminationMode = ref(false)
 const calculatorOpen = ref(false)
 const referenceOpen = ref(false)
 const navigatorOpen = ref(false)
@@ -291,6 +292,10 @@ function toggleEliminated(index: number) {
   active.has(index) ? active.delete(index) : active.add(index)
 }
 
+function toggleEliminationMode() {
+  eliminationMode.value = !eliminationMode.value
+}
+
 function goToQuestion(number: number) {
   currentNumber.value = Math.max(1, Math.min(currentModule.value.total, number))
   navigatorOpen.value = false
@@ -357,6 +362,7 @@ function restartExam() {
   challengeRating.value = null
   feedbackText.value = ''
   feedbackSubmitted.value = false
+  eliminationMode.value = false
   moduleIndex.value = 0
   currentNumber.value = 10
   timeRemaining.value = modules[0].duration
@@ -637,9 +643,9 @@ onBeforeUnmount(() => {
         </article>
         <div class="splitter" role="separator" aria-orientation="vertical" :aria-valuenow="Math.round(leftWidth)" tabindex="0" @pointerdown="beginResize"><span><i /><i /><i /></span></div>
         <article ref="questionScroller" class="question-panel" aria-label="Answer choices"><div class="question-shell">
-          <div class="question-toolbar"><span class="number-badge">{{ currentNumber }}</span><button class="review-button" :class="{ active: review.has(questionKey) }" type="button" @click="toggleReview"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M3 2.5h12v17l-6-4-6 4v-17Z" /></svg>Mark for Review</button><button class="report-button" type="button" @click="showToast('Thanks. This question has been reported for review.')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>Report</button></div>
+          <div class="question-toolbar"><span class="number-badge">{{ currentNumber }}</span><button class="review-button" :class="{ active: review.has(questionKey) }" type="button" @click="toggleReview"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M3 2.5h12v17l-6-4-6 4v-17Z" /></svg>Mark for Review</button><button class="report-button" type="button" @click="showToast('Thanks. This question has been reported for review.')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>Report</button><button class="elimination-mode-button" :class="{ active: eliminationMode }" type="button" :aria-pressed="eliminationMode" :aria-label="eliminationMode ? 'Hide answer elimination controls' : 'Show answer elimination controls'" :title="eliminationMode ? 'Hide answer elimination controls' : 'Eliminate answer choices'" @click="toggleEliminationMode"><span aria-hidden="true">ABC</span></button></div>
           <h1>{{ currentQuestion.prompt }}</h1>
-          <div class="choices" role="radiogroup" :aria-label="currentQuestion.prompt"><div v-for="(option, index) in currentQuestion.options" :key="`${questionKey}-${index}`" class="choice-row" :class="{ selected: answers[questionKey] === index, eliminated: eliminated[questionKey]?.has(index) }"><button class="choice-card" type="button" role="radio" :aria-checked="answers[questionKey] === index" @click="selectAnswer(index)"><span class="choice-letter">{{ String.fromCharCode(65 + index) }}</span><span class="choice-copy">{{ option }}</span></button><button class="eliminate-button" type="button" :aria-label="`Cross out answer ${String.fromCharCode(65 + index)}`" @click="toggleEliminated(index)"><span>{{ String.fromCharCode(65 + index) }}</span></button></div></div>
+          <div class="choices" role="radiogroup" :aria-label="currentQuestion.prompt"><div v-for="(option, index) in currentQuestion.options" :key="`${questionKey}-${index}`" class="choice-row" :class="{ selected: answers[questionKey] === index, eliminated: eliminated[questionKey]?.has(index), 'elimination-mode': eliminationMode }"><button class="choice-card" type="button" role="radio" :aria-checked="answers[questionKey] === index" @click="selectAnswer(index)"><span class="choice-letter">{{ String.fromCharCode(65 + index) }}</span><span class="choice-copy">{{ option }}</span></button><button v-if="eliminationMode" class="eliminate-button" type="button" :aria-label="`${eliminated[questionKey]?.has(index) ? 'Restore' : 'Cross out'} answer ${String.fromCharCode(65 + index)}`" :aria-pressed="eliminated[questionKey]?.has(index) ?? false" @click="toggleEliminated(index)"><span>{{ String.fromCharCode(65 + index) }}</span></button></div></div>
           <p class="keyboard-tip">Tip:&nbsp; press <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> to pick an answer, then <kbd class="enter-key">Enter</kbd> to go to the next question</p>
         </div></article>
       </section>
@@ -649,11 +655,11 @@ onBeforeUnmount(() => {
       <section class="math-workspace" :class="{ 'calculator-visible': calculatorOpen }">
         <div v-if="calculatorOpen" class="math-calculator-pane"><ScientificCalculator @close="calculatorOpen = false" /></div><div v-if="calculatorOpen" class="math-splitter" aria-hidden="true"><span><i /><i /><i /></span></div>
         <article ref="questionScroller" class="math-question-panel" aria-label="Math question"><div class="math-question-shell" :class="{ 'diagram-question': currentQuestion.diagram }">
-          <div class="question-toolbar"><span class="number-badge">{{ currentNumber }}</span><button class="review-button" :class="{ active: review.has(questionKey) }" type="button" @click="toggleReview"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M3 2.5h12v17l-6-4-6 4v-17Z" /></svg>Mark for Review</button><button class="report-button" type="button" @click="showToast('Thanks. This question has been reported for review.')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>Report</button></div>
+          <div class="question-toolbar"><span class="number-badge">{{ currentNumber }}</span><button class="review-button" :class="{ active: review.has(questionKey) }" type="button" @click="toggleReview"><svg viewBox="0 0 18 22" aria-hidden="true"><path d="M3 2.5h12v17l-6-4-6 4v-17Z" /></svg>Mark for Review</button><button class="report-button" type="button" @click="showToast('Thanks. This question has been reported for review.')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m1 1h11l-2.2 4L17 13H6" /></svg>Report</button><button class="elimination-mode-button" :class="{ active: eliminationMode }" type="button" :aria-pressed="eliminationMode" :aria-label="eliminationMode ? 'Hide answer elimination controls' : 'Show answer elimination controls'" :title="eliminationMode ? 'Hide answer elimination controls' : 'Eliminate answer choices'" @click="toggleEliminationMode"><span aria-hidden="true">ABC</span></button></div>
           <figure v-if="currentQuestion.diagram" class="circle-diagram"><svg viewBox="0 0 620 560" role="img" aria-label="Circle with intersecting lines through O"><circle cx="310" cy="260" r="210" /><path d="M228 66 393 458M395 69 226 457" /><text x="201" y="67">S</text><text x="397" y="67">R</text><text x="198" y="489">P</text><text x="401" y="489">Q</text><text x="321" y="280">O</text></svg><figcaption>Note: Figure not drawn to scale.</figcaption></figure>
           <HighlightablePassage :key="questionKey" :text="currentQuestion.passage" :enabled="highlighterEnabled" :model-value="highlights[questionKey] ?? []" extra-class="math-stem-copy" @update:model-value="updateHighlights" />
           <h1>{{ currentQuestion.prompt }}</h1>
-          <div class="choices math-choices" role="radiogroup" :aria-label="currentQuestion.prompt"><div v-for="(option, index) in currentQuestion.options" :key="`${questionKey}-${index}`" class="choice-row" :class="{ selected: answers[questionKey] === index, eliminated: eliminated[questionKey]?.has(index) }"><button class="choice-card" type="button" role="radio" :aria-checked="answers[questionKey] === index" @click="selectAnswer(index)"><span class="choice-letter">{{ String.fromCharCode(65 + index) }}</span><span class="choice-copy">{{ option }}</span></button><button class="eliminate-button" type="button" :aria-label="`Cross out answer ${String.fromCharCode(65 + index)}`" @click="toggleEliminated(index)"><span>{{ String.fromCharCode(65 + index) }}</span></button></div></div>
+          <div class="choices math-choices" role="radiogroup" :aria-label="currentQuestion.prompt"><div v-for="(option, index) in currentQuestion.options" :key="`${questionKey}-${index}`" class="choice-row" :class="{ selected: answers[questionKey] === index, eliminated: eliminated[questionKey]?.has(index), 'elimination-mode': eliminationMode }"><button class="choice-card" type="button" role="radio" :aria-checked="answers[questionKey] === index" @click="selectAnswer(index)"><span class="choice-letter">{{ String.fromCharCode(65 + index) }}</span><span class="choice-copy">{{ option }}</span></button><button v-if="eliminationMode" class="eliminate-button" type="button" :aria-label="`${eliminated[questionKey]?.has(index) ? 'Restore' : 'Cross out'} answer ${String.fromCharCode(65 + index)}`" :aria-pressed="eliminated[questionKey]?.has(index) ?? false" @click="toggleEliminated(index)"><span>{{ String.fromCharCode(65 + index) }}</span></button></div></div>
           <p class="keyboard-tip">Tip:&nbsp; press <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> to pick an answer, then <kbd class="enter-key">Enter</kbd> to go to the next question</p>
         </div></article>
       </section>
